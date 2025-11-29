@@ -9,4 +9,55 @@ datasource db {
 }
 
 // Add your models here
+model User {
+  id        Int      @id @default(autoincrement())
+  email     String   @unique
+  password  String
+  name      String
+  role      String   // "patient", "doctor", "receptionist", "admin"
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  patient       Patient?
+  doctor        Doctor?
+  receptionist  Receptionist?
+}
 
+model Patient {
+  id          Int      @id @default(autoincrement())
+  userId      Int      @unique
+  user        User     @relation(fields: [userId], references: [id])
+  
+  dateOfBirth DateTime
+  phone       String
+  address     String?
+  bloodType   String?
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Doctor {
+  id             Int      @id @default(autoincrement())
+  userId         Int      @unique
+  user           User     @relation(fields: [userId], references: [id])
+  
+  specialization String
+  licenseNumber  String   @unique
+  phone          String
+  
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model Receptionist {
+  id        Int      @id @default(autoincrement())
+  userId    Int      @unique
+  user      User     @relation(fields: [userId], references: [id])
+  
+  phone     String
+  shift     String   // "morning", "evening"
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

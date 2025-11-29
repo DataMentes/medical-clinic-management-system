@@ -3,6 +3,12 @@
 /backend/.env
 /backend/generated/
 /backend/*.log
+/backend/frontendtest/
+/backend/AUTH-IMPLEMENTATION.md
+/backend/EMAIL-SETUP.md
+/backend/SUPABASE-SETUP.md
+/backend/TOKEN-EXPIRATION-GUIDE.md
+/backend/TESTING-GUIDE.md
 
 # Frontend
 /frontend/node_modules/
