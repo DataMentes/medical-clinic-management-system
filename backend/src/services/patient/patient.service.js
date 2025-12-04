@@ -52,7 +52,7 @@ class PatientService {
     return await prisma.appointment.findMany({
       where: {
         patientId: parseInt(patientId),
-        bookingTime: {
+        appointmentDate: {
           gte: now
         },
         status: {
@@ -81,7 +81,7 @@ class PatientService {
         }
       },
       orderBy: {
-        bookingTime: 'asc'
+        appointmentDate: 'asc'
       }
     });
   }
@@ -95,7 +95,7 @@ class PatientService {
     return await prisma.appointment.findMany({
       where: {
         patientId: parseInt(patientId),
-        bookingTime: {
+        appointmentDate: {
           lt: now
         }
       },
@@ -122,7 +122,7 @@ class PatientService {
         medicalRecord: true
       },
       orderBy: {
-        bookingTime: 'desc'
+        appointmentDate: 'desc'
       }
     });
   }
@@ -165,7 +165,7 @@ class PatientService {
         }
       },
       orderBy: {
-        createdAt: 'desc'
+        id: 'desc'  // Use id instead of createdAt (which doesn't exist in schema)
       }
     });
   }
