@@ -1,21 +1,23 @@
-const authService = require('../services/auth.service');
-const emailService = require('../services/email.service');
+const prisma = require('../config/database');
+const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
+const emailService = require('../services/email.service');
+const { generateOTP, getOTPExpiry } = require('../utils/otp');
 
 class AuthController {
   /**
-   * Register new user
+   * Step 1: Register new patient + Send OTP
    * @route POST /api/auth/register
    */
   async register(req, res, next) {
     try {
-      const { email, password, name, role } = req.body;
+      const { email, password, fullName, phoneNumber, gender, yearOfBirth } = req.body;
 
-      // Validation
-      if (!email || !password || !name) {
+      // 1. Validation
+      if (!email || !password || !fullName || !phoneNumber || !gender || !yearOfBirth) {
         return res.status(400).json({
           success: false,
-          error: 'Email, password, and name are required'
+          error: 'All fields are required (email, password, fullName, phoneNumber, gender, yearOfBirth)'
         });
       }
 
@@ -26,17 +28,11 @@ class AuthController {
         });
       }
 
-      // Validate role
-      const validRoles = ['admin', 'doctor', 'receptionist', 'patient'];
-      if (role && !validRoles.includes(role)) {
-        return res.status(400).json({
-          success: false,
-          error: 'Invalid role'
-        });
-      }
+      // 2. Check if email exists
+      const existingUser = await prisma.user.findUnique({
+        where: { email }
+      });
 
-      // Check if email exists
-      const existingUser = await authService.findByEmail(email);
       if (existingUser) {
         return res.status(409).json({
           success: false,
@@ -44,110 +40,109 @@ class AuthController {
         });
       }
 
-      // Create user
-      const user = await authService.createUser({
-        email,
-        password,
-        name,
-        role: role || 'patient'
+      // 3. Hash password
+      const hashedPassword = await bcrypt.hash(password, 12);
+
+      // 4. Create User + Person + Patient (Transaction)
+      const result = await prisma.$transaction(async (tx) => {
+        // Create User with Person (nested create)
+        const user = await tx.user.create({
+          data: {
+            email,
+            passwordHash: hashedPassword,
+            active: 'No',
+            person: {
+              create: {
+                fullName,
+                phoneNumber,
+                roleId: 1,
+                gender
+              }
+            }
+          },
+          include: {
+            person: true
+          }
+        });
+
+        // Create Patient
+        const patient = await tx.patient.create({
+          data: {
+            userId: user.userId,
+            yearOfBirth: parseInt(yearOfBirth)
+          }
+        });
+
+        // Generate and save OTP
+        const otpCode = generateOTP();
+        const expiryTime = getOTPExpiry();
+
+        const otp = await tx.oTPVerification.create({
+          data: {
+            userId: user.userId,
+            otpCode,
+            expiryTime
+          }
+        });
+
+        return { user, patient, otpCode };
       });
 
-      // Generate JWT token
-      const token = jwt.sign(
-        { id: user.id, email: user.email, role: user.role },
-        process.env.JWT_SECRET || 'your-secret-key',
-        { expiresIn: '7d' }
-      );
+      // 5. Send OTP email (async - don't wait)
+      console.log('\n🔑 OTP CODE for', email, ':', result.otpCode, '\n');
+      
+      emailService.sendOTP(email, result.otpCode, fullName)
+        .catch(err => {
+          console.error('❌ OTP email error:', err.message);
+        });
 
-      // Send welcome email (async - don't wait)
-      emailService.sendWelcomeEmail({
-        email: user.email,
-        name: user.name
-      }).catch(err => {
-        // Log error but don't fail registration
-        console.error('Failed to send welcome email:', err.message);
-      });
-
-      res.status(201).json({
+      // 6. Return response
+      return res.status(201).json({
         success: true,
-        message: 'User registered successfully',
+        message: 'Registration successful. Please check your email for OTP verification code.',
         data: {
-          user,
-          token
+          userId: result.user.userId,
+          email: result.user.email,
+          requiresVerification: true
         }
       });
+
     } catch (error) {
+      console.error('Registration error:', error);
       next(error);
     }
   }
 
   /**
-   * Login user
-   * @route POST /api/auth/login
+   * Step 2: Verify OTP
+   * @route POST /api/auth/verify-otp
    */
-  async login(req, res, next) {
+  async verifyOTP(req, res, next) {
     try {
-      const { email, password } = req.body;
+      const { email, otpCode } = req.body;
 
-      // Validation
-      if (!email || !password) {
+      if (!email || !otpCode) {
         return res.status(400).json({
           success: false,
-          error: 'Email and password are required'
+          error: 'Email and OTP code are required'
         });
       }
 
-      // Find user
-      const user = await authService.findByEmail(email);
-      if (!user) {
-        return res.status(401).json({
-          success: false,
-          error: 'Invalid email or password'
-        });
-      }
-
-      // Verify password
-      const isPasswordValid = await authService.verifyPassword(password, user.password);
-      if (!isPasswordValid) {
-        return res.status(401).json({
-          success: false,
-          error: 'Invalid email or password'
-        });
-      }
-
-      // Generate JWT token
-      const token = jwt.sign(
-        { id: user.id, email: user.email, role: user.role },
-        process.env.JWT_SECRET || 'your-secret-key',
-        { expiresIn: '7d' }
-      );
-
-      // Remove password from response
-      const { password: _, ...userWithoutPassword } = user;
-
-      res.json({
-        success: true,
-        message: 'Login successful',
-        data: {
-          user: userWithoutPassword,
-          token,
-          redirectTo: this.getRedirectPath(user.role)
+      // 1. Find user
+      const user = await prisma.user.findUnique({
+        where: { email },
+        include: {
+          person: {
+            include: {
+              patient: true
+            }
+          }
         }
       });
-    } catch (error) {
-      next(error);
-    }
-  }
-
-  /**
-   * Get current user info
-   * @route GET /api/auth/me
-   */
-  async me(req, res, next) {
-    try {
-      // User already attached by auth middleware
-      const user = await authService.findByEmail(req.user.email);
       
+      console.log(user);
+
+
       if (!user) {
         return res.status(404).json({
           success: false,
@@ -155,50 +150,371 @@ class AuthController {
         });
       }
 
-      const { password: _, ...userWithoutPassword } = user;
+      // 2. Check if user is already active
+      if (user.active === 'Yes') {
+        return res.status(400).json({
+          success: false,
+          error: 'Account already verified.'
+        });
+      }
 
-      res.json({
-        success: true,
+      // 3. Verify OTP
+      const otpRecord = await prisma.oTPVerification.findUnique({
+        where: { userId: user.userId }
+      });
+
+      if (!otpRecord) {
+        return res.status(404).json({
+          success: false,
+          error: 'OTP not found. Please request a new one.'
+        });
+      }
+
+      if (otpRecord.otpCode !== otpCode) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid OTP code'
+        });
+      }
+
+      if (new Date() > otpRecord.expiryTime) {
+        return res.status(400).json({
+          success: false,
+          error: 'OTP has expired. Please request a new one.'
+        });
+      }
+
+      // 4. Activate user account
+      await prisma.user.update({
+        where: { userId: user.userId },
         data: {
-          user: userWithoutPassword,
-          redirectTo: this.getRedirectPath(user.role)
+          active: 'Yes'
         }
       });
+
+      // 5. Delete OTP (verified successfully)
+      await prisma.oTPVerification.delete({
+        where: { userId: user.userId }
+      });
+
+      // 6. Generate JWT token
+      const token = jwt.sign(
+        {
+          id: user.userId,
+          email: user.email,
+          personId: user.person.userId,
+          patientId: user.person.patient.id,
+          role: 'Patient',
+          verified: true
+        },
+        process.env.JWT_SECRET || 'your-secret-key',
+        { expiresIn: '7d' }
+      );
+
+      // 7. Send welcome email (async)
+      emailService.sendWelcomeEmail({
+        email: user.email,
+        name: user.person.fullName
+      }).catch(err => {
+        console.error('Failed to send welcome email:', err.message);
+      });
+
+      // 8. Return response
+      return res.json({
+        success: true,
+        message: 'Email verified successfully',
+        data: {
+          user: {
+            id: user.userId,
+            email: user.email,
+            verified: true
+          },
+          person: {
+            id: user.person.userId,
+            fullName: user.person.fullName,
+            phoneNumber: user.person.phoneNumber
+          },
+          patient: {
+            id: user.person.patient.id
+          },
+          token,
+          role: 'Patient'
+        }
+      });
+
     } catch (error) {
+      console.error('OTP verification error:', error);
       next(error);
     }
   }
 
   /**
-   * Logout user
+   * Resend OTP
+   * @route POST /api/auth/resend-otp
+   */
+  async resendOTP(req, res, next) {
+    try {
+      const { email } = req.body;
+
+      if (!email) {
+        return res.status(400).json({
+          success: false,
+          error: 'Email is required'
+        });
+      }
+
+      // 1. Find user
+      const user = await prisma.user.findUnique({
+        where: { email },
+        include: {
+          person: true
+        }
+      });
+
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          error: 'User not found'
+        });
+      }
+
+      // 2. Check if user is already active
+      if (user.active === 'Yes') {
+        return res.status(400).json({
+          success: false,
+          error: 'Account already verified.'
+        });
+      }
+
+      // 3. Generate new OTP (will update existing record)
+      const otpCode = generateOTP();
+      const expiryTime = getOTPExpiry();
+
+      // 4. Upsert OTP (update existing or create new)
+      await prisma.oTPVerification.upsert({
+        where: { userId: user.userId },
+        create: {
+          userId: user.userId,
+          otpCode,
+          expiryTime
+        },
+        update: {
+          otpCode,
+          expiryTime
+        }
+      });
+
+      // 5. Send OTP email
+      console.log('\n🔑 RESEND OTP for', email, ':', otpCode, '\n');
+      
+      emailService.sendOTP(email, otpCode, user.person.fullName)
+        .catch(err => {
+          console.error('❌ OTP email error:', err.message);
+        });
+
+      return res.json({
+        success: true,
+        message: 'New OTP sent to your email'
+      });
+
+    } catch (error) {
+      console.error('Resend OTP error:', error);
+      next(error);
+    }
+  }
+
+  /**
+   * Login user (requires verified email)
+   * @route POST /api/auth/login
+   */
+  async login(req, res, next) {
+    try {
+      const { email, password } = req.body;
+
+      if (!email || !password) {
+        return res.status(400).json({
+          success: false,
+          error: 'Email and password are required'
+        });
+      }
+
+      // 1. Find user with person and role data
+      const user = await prisma.user.findUnique({
+        where: { email },
+        include: {
+          person: {
+            include: {
+              patient: true,
+              doctor: true
+            }
+          }
+        }
+      });
+
+      if (!user) {
+        return res.status(401).json({
+          success: false,
+          error: 'Invalid email or password'
+        });
+      }
+
+      // 2. Verify password
+      const isPasswordValid = await bcrypt.compare(password, user.passwordHash);
+      if (!isPasswordValid) {
+        return res.status(401).json({
+          success: false,
+          error: 'Invalid email or password'
+        });
+      }
+
+      // 3. Check if account is active
+      if (user.active === 'No') {
+        return res.status(403).json({
+          success: false,
+          error: 'Account not activated. Please verify your email with OTP.',
+          requiresVerification: true
+        });
+      }
+
+      // 4. Determine role based on Person.roleId
+      // roleId: 1=Patient, 2=Doctor, 3=Admin, 4=Receptionist
+      const roleMap = {
+        1: 'Patient',
+        2: 'Doctor',
+        3: 'Admin',
+        4: 'Receptionist'
+      };
+      
+      const role = roleMap[user.person?.roleId] || 'Unknown';
+      const roleId = user.person?.roleId;
+      
+      // Add specific IDs based on role
+      const roleData = {};
+      if (user.person?.patient) {
+        roleData.patientId = user.person.patient.id;
+      }
+      if (user.person?.doctor) {
+        roleData.doctorId = user.person.doctor.id;
+      }
+
+      // 5. Generate token
+      const token = jwt.sign(
+        {
+          userId: user.userId,
+          email: user.email,
+          personId: user.person?.userId,
+          role,
+          roleId,
+          verified: true,
+          ...roleData
+        },
+        process.env.JWT_SECRET || 'your-secret-key',
+        { expiresIn: '7d' }
+      );
+
+      // 6. Return response with clear role info
+      return res.json({
+        success: true,
+        message: 'Login successful',
+        data: {
+          user: {
+            id: user.userId,
+            email: user.email,
+            verified: true
+          },
+          person: user.person ? {
+            id: user.person.userId,
+            fullName: user.person.fullName,
+            phoneNumber: user.person.phoneNumber,
+            gender: user.person.gender
+          } : null,
+          role,
+          roleId,
+          ...roleData,
+          token,
+          redirectTo: role === 'Patient' ? '/patient/dashboard' : 
+                     role === 'Doctor' ? '/doctor/dashboard' :
+                     role === 'Admin' ? '/admin/dashboard' :
+                     role === 'Receptionist' ? '/reception/dashboard' : '/dashboard'
+        }
+      });
+
+    } catch (error) {
+      console.error('Login error:', error);
+      next(error);
+    }
+  }
+
+  /**
+   * Get current user
+   * @route GET /api/auth/me
+   */
+  async me(req, res, next) {
+    try {
+      const userId = req.user.userId;
+
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        include: {
+          person: {
+            include: {
+              patient: true,
+              doctor: true
+            }
+          }
+        }
+      });
+
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          error: 'User not found'
+        });
+      }
+
+      let role = 'Unknown';
+      if (user.person?.patient) role = 'Patient';
+      else if (user.person?.doctor) role = 'Doctor';
+
+      return res.json({
+        success: true,
+        data: {
+          user: {
+            id: user.userId,
+            email: user.email,
+            verified: true
+          },
+          person: user.person ? {
+            id: user.person.userId,
+            fullName: user.person.fullName,
+            phoneNumber: user.person.phoneNumber,
+            dob: user.person.dob
+          } : null,
+          role,
+          redirectTo: role === 'Patient' ? '/patient/dashboard' : 
+                     role === 'Doctor' ? '/doctor/dashboard' : '/dashboard'
+        }
+      });
+
+    } catch (error) {
+      console.error('Me error:', error);
+      next(error);
+    }
+  }
+
+  /**
+   * Logout
    * @route POST /api/auth/logout
    */
   async logout(req, res, next) {
     try {
-      // In JWT-based auth, logout is handled on client side by removing token
-      // Here you can add token blacklisting if needed
-      
-      res.json({
+      return res.json({
         success: true,
         message: 'Logout successful'
       });
     } catch (error) {
       next(error);
     }
-  }
-
-  /**
-   * Helper: Get redirect path based on role
-   */
-  getRedirectPath(role) {
-    const redirectPaths = {
-      admin: '/admin/dashboard',
-      doctor: '/doctor/dashboard',
-      receptionist: '/receptionist/dashboard',
-      patient: '/patient/dashboard'
-    };
-
-    return redirectPaths[role] || '/dashboard';
   }
 }
 

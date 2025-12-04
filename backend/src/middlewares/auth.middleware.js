@@ -76,28 +76,84 @@ class AuthMiddleware {
    * Check if user is admin
    */
   isAdmin(req, res, next) {
-    return this.hasRole('admin')(req, res, next);
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        error: 'Authentication required'
+      });
+    }
+
+    if (req.user.role !== 'Admin') {
+      return res.status(403).json({
+        success: false,
+        error: 'Admin access required'
+      });
+    }
+
+    next();
   }
 
   /**
    * Check if user is doctor
    */
   isDoctor(req, res, next) {
-    return this.hasRole('doctor')(req, res, next);
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        error: 'Authentication required'
+      });
+    }
+
+    if (req.user.role !== 'Doctor') {
+      return res.status(403).json({
+        success: false,
+        error: 'Doctor access required'
+      });
+    }
+
+    next();
   }
 
   /**
    * Check if user is receptionist
    */
   isReceptionist(req, res, next) {
-    return this.hasRole('receptionist')(req, res, next);
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        error: 'Authentication required'
+      });
+    }
+
+    if (req.user.role !== 'Receptionist') {
+      return res.status(403).json({
+        success: false,
+        error: 'Receptionist access required'
+      });
+    }
+
+    next();
   }
 
   /**
    * Check if user is patient
    */
   isPatient(req, res, next) {
-    return this.hasRole('patient')(req, res, next);
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        error: 'Authentication required'
+      });
+    }
+
+    if (req.user.role !== 'Patient') {
+      return res.status(403).json({
+        success: false,
+        error: 'Patient access required'
+      });
+    }
+
+    next();
   }
 }
 

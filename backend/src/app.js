@@ -1,8 +1,10 @@
 const express = require('express');
+const cors = require('cors');
 
 const app = express();
 
 // Middlewares
+app.use(cors()); // Enable CORS for all routes
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -16,7 +18,10 @@ if (process.env.NODE_ENV === 'development') {
 
 // Routes
 app.use('/api/auth', require('./routes/auth.routes'));
-// app.use('/api/patients', require('./routes/patient.routes'));
+app.use('/api/patient', require('./routes/patient.routes'));
+app.use('/api/doctor', require('./routes/doctor.routes'));
+app.use('/api/reception', require('./routes/reception.routes'));
+app.use('/api/admin', require('./routes/admin.routes'));
 
 // Health check
 app.get('/', (req, res) => {

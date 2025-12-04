@@ -1,6 +1,5 @@
 generator client {
-  provider = "prisma-client"
-  output   = "../generated/prisma"
+  provider = "prisma-client-js"
 }
 
 datasource db {
@@ -8,56 +7,182 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// Add your models here
-model User {
-  id        Int      @id @default(autoincrement())
-  email     String   @unique
-  password  String
-  name      String
-  role      String   // "patient", "doctor", "receptionist", "admin"
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  
-  patient       Patient?
-  doctor        Doctor?
-  receptionist  Receptionist?
+model Specialty {
+  id      Int      @id @default(autoincrement()) @map("specialtyid")
+  name    String   @map("name")
+  doctors Doctor[]
+
+  @@map("specialties")
 }
 
-model Patient {
-  id          Int      @id @default(autoincrement())
-  userId      Int      @unique
-  user        User     @relation(fields: [userId], references: [id])
-  
-  dateOfBirth DateTime
-  phone       String
-  address     String?
-  bloodType   String?
-  
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+model Room {
+  id        Int              @id @default(autoincrement()) @map("roomid")
+  roomName  String           @map("roomname")
+  schedules DoctorSchedule[]
+
+  @@map("rooms")
+}
+
+model Role {
+  id       Int      @id @default(autoincrement()) @map("roleid")
+  roleName RoleEnum @unique @map("rolename")
+
+  @@map("roles")
+}
+
+model Person {
+  userId          Int              @id @default(autoincrement()) @map("userid")
+  fullName        String           @map("fullname")
+  phoneNumber     String           @unique @map("phonenumber")
+  roleId          Int              @map("roleid")
+  gender          GenderEnum
+  doctor          Doctor?
+  otpVerification OTPVerification?
+  patient         Patient?
+  user            User?
+
+  @@map("persons")
+}
+
+model User {
+  userId       Int        @id @unique @map("userid")
+  email        String     @unique @map("email")
+  passwordHash String     @map("passwordhash")
+  active       ActiveEnum @default(No) @map("active")
+  registerDate DateTime   @default(now()) @map("registerdate") @db.Timestamptz(6)
+  person       Person     @relation(fields: [userId], references: [userId], onDelete: Cascade)
+
+  @@map("users")
+}
+
+model OTPVerification {
+  userId     Int      @id @map("userid")
+  otpCode    String   @map("otp_code")
+  expiryTime DateTime @map("expirytime") @db.Timestamptz(6)
+  person     Person   @relation(fields: [userId], references: [userId], onDelete: Cascade)
+
+  @@map("otp_verification")
 }
 
 model Doctor {
-  id             Int      @id @default(autoincrement())
-  userId         Int      @unique
-  user           User     @relation(fields: [userId], references: [id])
-  
-  specialization String
-  licenseNumber  String   @unique
-  phone          String
-  
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id              Int              @id @default(autoincrement()) @map("doctorid")
+  userId          Int              @unique @map("userid")
+  specialtyId     Int              @map("specialtyid")
+  examinationFee  Decimal          @map("examinationfee") @db.Decimal(10, 2)
+  consultationFee Decimal          @map("consultationfee") @db.Decimal(10, 2)
+  biography       String?          @map("biography")
+  appointments    Appointment[]
+  specialty       Specialty        @relation(fields: [specialtyId], references: [id], onDelete: SetNull)
+  person          Person           @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  schedules       DoctorSchedule[]
+
+  @@map("doctors")
 }
 
-model Receptionist {
-  id        Int      @id @default(autoincrement())
-  userId    Int      @unique
-  user      User     @relation(fields: [userId], references: [id])
-  
-  phone     String
-  shift     String   // "morning", "evening"
-  
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+model Patient {
+  id           Int           @id @default(autoincrement()) @map("patientid")
+  userId       Int           @unique @map("userid")
+  yearOfBirth  Int           @map("yearofbirth")
+  appointments Appointment[]
+  person       Person        @relation(fields: [userId], references: [userId], onDelete: Cascade)
+
+  @@map("patients")
+}
+
+model DoctorSchedule {
+  id           Int           @id @default(autoincrement()) @map("scheduleid")
+  doctorId     Int           @map("doctorid")
+  weekDay      WeekdayEnum   @map("weekday")
+  roomId       Int           @map("roomid")
+  startTime    DateTime      @map("starttime") @db.Time(6)
+  endTime      DateTime      @map("endtime") @db.Time(6)
+  maxCapacity  Int           @map("maxcapacity")
+  appointments Appointment[]
+  doctor       Doctor        @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  room         Room          @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  @@unique([doctorId, weekDay], map: "uq_doctor_schedule")
+  @@map("doctorschedules")
+}
+
+model Appointment {
+  id                  Int                    @id @default(autoincrement()) @map("appointmentid")
+  patientId           Int                    @map("patientid")
+  scheduleId          Int                    @map("scheduleid")
+  doctorId            Int                    @map("doctorid")
+  parentAppointmentId Int?                   @map("parentappointmentid")
+  appointmentType     AppointmentTypeEnum    @map("appointmenttype")
+  status              AppointmentStatusEnum? @default(Pending) @map("status")
+  feePaid             Decimal                @map("feepaid") @db.Decimal(10, 2)
+  appointmentDate     DateTime               @map("appointmentdate") @db.Date
+  doctor              Doctor                 @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  parentAppt          Appointment?           @relation("FollowUp", fields: [parentAppointmentId], references: [id])
+  followUpAppts       Appointment[]          @relation("FollowUp")
+  patient             Patient                @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  schedule            DoctorSchedule         @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  medicalRecord       MedicalRecord[]
+
+  @@map("appointments")
+}
+
+model MedicalRecord {
+  id            Int         @id @default(autoincrement()) @map("recordid")
+  appointmentId Int         @map("appointmentid")
+  diagnosis     String      @map("diagnosis")
+  prescription  String      @map("prescription")
+  notes         String?     @map("notes")
+  appointment   Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+
+  @@map("medicalrecords")
+}
+
+enum RoleEnum {
+  Admin
+  Doctor
+  Receptionist
+  Patient
+
+  @@map("role_enum")
+}
+
+enum WeekdayEnum {
+  Mon
+  Tue
+  Wed
+  Thu
+  Fri
+  Sat
+  Sun
+
+  @@map("weekday_enum")
+}
+
+enum AppointmentTypeEnum {
+  Examination
+  Consultation
+
+  @@map("appointment_type_enum")
+}
+
+enum AppointmentStatusEnum {
+  Pending
+  Confirmed
+  Completed
+  Canceled
+
+  @@map("appointment_status_enum")
+}
+
+enum ActiveEnum {
+  Yes
+  No
+
+  @@map("active_enum")
+}
+
+enum GenderEnum {
+  Male
+  Female
+
+  @@map("gender_enum")
 }

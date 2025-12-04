@@ -8,10 +8,16 @@ const authMiddleware = require('../middlewares/auth.middleware');
  * Base path: /api/auth
  */
 
-// POST /api/auth/register - Register new user
+// POST /api/auth/register - Register new user (sends OTP)
 router.post('/register', authController.register);
 
-// POST /api/auth/login - Login user
+// POST /api/auth/verify-otp - Verify email with OTP
+router.post('/verify-otp', authController.verifyOTP);
+
+// POST /api/auth/resend-otp - Resend OTP
+router.post('/resend-otp', authController.resendOTP);
+
+// POST /api/auth/login - Login user (requires verified email)
 router.post('/login', authController.login);
 
 // GET /api/auth/me - Get current user (requires authentication)
