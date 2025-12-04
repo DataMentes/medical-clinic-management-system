@@ -432,10 +432,10 @@ class AuthController {
           roleId,
           ...roleData,
           token,
-          redirectTo: role === 'Patient' ? '/patient/dashboard' : 
-                     role === 'Doctor' ? '/doctor/dashboard' :
-                     role === 'Admin' ? '/admin/dashboard' :
-                     role === 'Receptionist' ? '/reception/dashboard' : '/dashboard'
+          redirectTo: role === 'Patient' ? '/patient-dashboard' : 
+                     role === 'Doctor' ? '/doctor-dashboard' :
+                     role === 'Admin' ? '/admin-dashboard' :
+                     role === 'Receptionist' ? '/receptionist-dashboard' : '/dashboard'
         }
       });
 
