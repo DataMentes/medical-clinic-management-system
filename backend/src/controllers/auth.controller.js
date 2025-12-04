@@ -55,7 +55,7 @@ class AuthController {
               create: {
                 fullName,
                 phoneNumber,
-                roleId: 1,
+                roleId: 2, // Patient role
                 gender
               }
             }
@@ -377,10 +377,10 @@ class AuthController {
       }
 
       // 4. Determine role based on Person.roleId
-      // roleId: 1=Patient, 2=Doctor, 3=Admin, 4=Receptionist
+      // roleId: 1=Doctor, 2=Patient, 3=Admin, 4=Receptionist
       const roleMap = {
-        1: 'Patient',
-        2: 'Doctor',
+        1: 'Doctor',
+        2: 'Patient',
         3: 'Admin',
         4: 'Receptionist'
       };

@@ -37,7 +37,7 @@ class ReceptionController {
             fullName,
             phoneNumber,
             gender,
-            roleId: 1 // Patient role
+            roleId: 2 // Patient role (1=Doctor, 2=Patient, 3=Admin, 4=Receptionist)
           }
         });
 

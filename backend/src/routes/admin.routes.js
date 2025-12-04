@@ -55,6 +55,13 @@ router.post('/medical-records', adminController.createMedicalRecord);
 router.put('/medical-records/:id', adminController.updateMedicalRecord);
 router.delete('/medical-records/:id', adminController.deleteMedicalRecord);
 
+// ==================== RECEPTIONIST ROUTES ====================
+router.get('/receptionists', adminController.getAllReceptionists);
+router.get('/receptionists/:id', adminController.getReceptionistById);
+router.post('/receptionists', adminController.createReceptionist);
+router.put('/receptionists/:id', adminController.updateReceptionist);
+router.delete('/receptionists/:id', adminController.deleteReceptionist);
+
 // ==================== ADMIN ROUTES ====================
 router.get('/admins', adminController.getAllAdmins);
 router.post('/admins', adminController.createAdmin);

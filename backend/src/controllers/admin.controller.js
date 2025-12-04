@@ -1013,7 +1013,7 @@ class AdminController {
                 fullName,
                 phoneNumber,
                 gender: gender || 'Male', // Default if missing
-                roleId: 2 // Doctor Role ID
+                roleId: 1 // Doctor Role ID (1=Doctor, 2=Patient, 3=Admin, 4=Receptionist)
               }
             }
           },
@@ -2178,6 +2178,289 @@ class AdminController {
       });
     } catch (error) {
       console.error('Delete medical record error:', error);
+      next(error);
+    }
+  }
+  
+  // ==================== RECEPTIONIST MANAGEMENT ====================
+  
+  /**
+   * Get all receptionists
+   * @route GET /api/admin/receptionists
+   */
+  async getAllReceptionists(req, res, next) {
+    try {
+      const { page = 1, limit = 20, search = '' } = req.query;
+      
+      const skip = (parseInt(page) - 1) * parseInt(limit);
+      const take = parseInt(limit);
+      
+      // Build where clause (Role ID 4 = Receptionist)
+      const where = {
+        roleId: 4,
+        OR: search ? [
+          { fullName: { contains: search, mode: 'insensitive' } },
+          { user: { email: { contains: search, mode: 'insensitive' } } }
+        ] : undefined
+      };
+      
+      const total = await prisma.person.count({ where });
+      
+      const receptionists = await prisma.person.findMany({
+        where,
+        skip,
+        take,
+        include: {
+          user: {
+            select: {
+              email: true,
+              active: true,
+              registerDate: true
+            }
+          }
+        },
+        orderBy: { fullName: 'asc' }
+      });
+      
+      // Format response
+      const formattedReceptionists = receptionists.map(r => ({
+        userId: r.userId,
+        fullName: r.fullName,
+        email: r.user?.email,
+        phoneNumber: r.phoneNumber,
+        gender: r.gender,
+        active: r.user?.active,
+        registerDate: r.user?.registerDate
+      }));
+      
+      return res.json({
+        success: true,
+        data: {
+          receptionists: formattedReceptionists,
+          pagination: {
+            total,
+            page: parseInt(page),
+            limit: parseInt(limit),
+            totalPages: Math.ceil(total / parseInt(limit))
+          }
+        }
+      });
+    } catch (error) {
+      console.error('Get all receptionists error:', error);
+      next(error);
+    }
+  }
+
+  /**
+   * Get receptionist by ID
+   * @route GET /api/admin/receptionists/:id
+   */
+  async getReceptionistById(req, res, next) {
+    try {
+      const { id } = req.params;
+      
+      const receptionist = await prisma.person.findFirst({
+        where: { 
+          userId: parseInt(id),
+          roleId: 4
+        },
+        include: {
+          user: {
+            select: {
+              email: true,
+              active: true,
+              registerDate: true,
+              activeDate: true
+            }
+          }
+        }
+      });
+      
+      if (!receptionist) {
+        return res.status(404).json({
+          success: false,
+          error: 'Receptionist not found'
+        });
+      }
+      
+      return res.json({
+        success: true,
+        data: receptionist
+      });
+    } catch (error) {
+      console.error('Get receptionist by ID error:', error);
+      next(error);
+    }
+  }
+
+  /**
+   * Create new receptionist
+   * @route POST /api/admin/receptionists
+   */
+  async createReceptionist(req, res, next) {
+    try {
+      const { email, password, fullName, phoneNumber, gender } = req.body;
+      
+      // Basic validation
+      if (!email || !password || !fullName || !phoneNumber) {
+        return res.status(400).json({
+          success: false,
+          error: 'Missing required fields'
+        });
+      }
+      
+      // Check if email exists
+      const existingUser = await prisma.user.findUnique({
+        where: { email }
+      });
+      
+      if (existingUser) {
+        return res.status(409).json({
+          success: false,
+          error: 'Email already registered'
+        });
+      }
+      
+      // Hash password
+      const bcrypt = require('bcryptjs');
+      const hashedPassword = await bcrypt.hash(password, 10);
+      
+      // Create User with Person (Receptionist role)
+      const user = await prisma.user.create({
+        data: {
+          email,
+          passwordHash: hashedPassword,
+          active: 'Yes', // Receptionists are active by default
+          person: {
+            create: {
+              fullName,
+              phoneNumber,
+              gender: gender || 'Male',
+              roleId: 4 // Receptionist Role (1=Doctor, 2=Patient, 3=Admin, 4=Receptionist)
+            }
+          }
+        },
+        include: { person: true }
+      });
+      
+      return res.status(201).json({
+        success: true,
+        message: 'Receptionist created successfully',
+        data: {
+          userId: user.userId,
+          fullName: user.person.fullName,
+          email: user.email
+        }
+      });
+    } catch (error) {
+      console.error('Create receptionist error:', error);
+      next(error);
+    }
+  }
+
+  /**
+   * Update receptionist
+   * @route PUT /api/admin/receptionists/:id
+   */
+  async updateReceptionist(req, res, next) {
+    try {
+      const { id } = req.params;
+      const { fullName, phoneNumber, gender, active } = req.body;
+      
+      const receptionist = await prisma.person.findFirst({
+        where: { 
+          userId: parseInt(id),
+          roleId: 4
+        }
+      });
+      
+      if (!receptionist) {
+        return res.status(404).json({
+          success: false,
+          error: 'Receptionist not found'
+        });
+      }
+      
+      // Update transaction
+      const updatedReceptionist = await prisma.$transaction(async (tx) => {
+        // Update Person
+        if (fullName || phoneNumber || gender) {
+          await tx.person.update({
+            where: { userId: parseInt(id) },
+            data: {
+              fullName,
+              phoneNumber,
+              gender
+            }
+          });
+        }
+        
+        // Update User (Active status)
+        if (active) {
+          await tx.user.update({
+            where: { userId: parseInt(id) },
+            data: { active }
+          });
+        }
+        
+        return tx.person.findUnique({
+          where: { userId: parseInt(id) },
+          include: { user: true }
+        });
+      });
+      
+      return res.json({
+        success: true,
+        message: 'Receptionist updated successfully',
+        data: updatedReceptionist
+      });
+    } catch (error) {
+      console.error('Update receptionist error:', error);
+      next(error);
+    }
+  }
+
+  /**
+   * Delete receptionist
+   * @route DELETE /api/admin/receptionists/:id
+   */
+  async deleteReceptionist(req, res, next) {
+    try {
+      const { id } = req.params;
+      
+      const receptionist = await prisma.person.findFirst({
+        where: { 
+          userId: parseInt(id),
+          roleId: 4
+        }
+      });
+      
+      if (!receptionist) {
+        return res.status(404).json({
+          success: false,
+          error: 'Receptionist not found'
+        });
+      }
+      
+      // Delete transaction
+      await prisma.$transaction(async (tx) => {
+        // Delete Person
+        await tx.person.delete({
+          where: { userId: parseInt(id) }
+        });
+        
+        // Delete User
+        await tx.user.delete({
+          where: { userId: parseInt(id) }
+        });
+      });
+      
+      return res.json({
+        success: true,
+        message: 'Receptionist deleted successfully'
+      });
+    } catch (error) {
+      console.error('Delete receptionist error:', error);
       next(error);
     }
   }
