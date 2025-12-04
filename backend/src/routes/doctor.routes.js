@@ -33,4 +33,14 @@ router.get('/appointments/:appointmentId', doctorController.getAppointmentDetail
 // Add medical record for appointment
 router.post('/appointments/:appointmentId/medical-record', doctorController.addMedicalRecord);
 
+// ===== Profile Management =====
+// Get profile
+router.get('/profile', doctorController.getProfile);
+
+// Update phone number
+router.put('/profile/phone', doctorController.updatePhone);
+
+// Update password
+router.put('/profile/password', doctorController.updatePassword);
+
 module.exports = router;

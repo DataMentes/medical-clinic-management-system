@@ -661,6 +661,170 @@ class DoctorController {
       next(error);
     }
   }
+
+  /**
+   * Get doctor profile
+   * @route GET /api/doctor/profile
+   */
+  async getProfile(req, res, next) {
+    try {
+      const userId = req.user.userId;
+
+      const user = await prisma.user.findUnique({
+        where: { userId },
+        include: {
+          person: {
+            include: {
+              doctor: {
+                include: {
+                  specialty: true
+                }
+              }
+            }
+          }
+        }
+      });
+
+      if (!user || !user.person?.doctor) {
+        return res.status(404).json({
+          success: false,
+          error: 'Doctor profile not found'
+        });
+      }
+
+      return res.json({
+        success: true,
+        data: {
+          user: {
+            id: user.userId,
+            email: user.email
+          },
+          person: {
+            fullName: user.person.fullName,
+            phoneNumber: user.person.phoneNumber,
+            gender: user.person.gender
+          },
+          doctor: {
+            id: user.person.doctor.id,
+            specialty: user.person.doctor.specialty,
+            examinationFee: user.person.doctor.examinationFee,
+            consultationFee: user.person.doctor.consultationFee,
+            biography: user.person.doctor.biography
+          }
+        }
+      });
+    } catch (error) {
+      console.error('Get profile error:', error);
+      next(error);
+    }
+  }
+
+  /**
+   * Update phone number
+   * @route PUT /api/doctor/profile/phone
+   */
+  async updatePhone(req, res, next) {
+    try {
+      const userId = req.user.userId;
+      const { phoneNumber } = req.body;
+
+      if (!phoneNumber) {
+        return res.status(400).json({
+          success: false,
+          error: 'Phone number is required'
+        });
+      }
+
+      // Check if phone already exists
+      const existingPhone = await prisma.person.findFirst({
+        where: {
+          phoneNumber,
+          userId: { not: userId }
+        }
+      });
+
+      if (existingPhone) {
+        return res.status(409).json({
+          success: false,
+          error: 'Phone number already in use'
+        });
+      }
+
+      const updatedPerson = await prisma.person.update({
+        where: { userId },
+        data: { phoneNumber }
+      });
+
+      return res.json({
+        success: true,
+        message: 'Phone number updated successfully',
+        data: {
+          phoneNumber: updatedPerson.phoneNumber
+        }
+      });
+    } catch (error) {
+      console.error('Update phone error:', error);
+      next(error);
+    }
+  }
+
+  /**
+   * Update password
+   * @route PUT /api/doctor/profile/password
+   */
+  async updatePassword(req, res, next) {
+    try {
+      const userId = req.user.userId;
+      const { currentPassword, newPassword } = req.body;
+
+      if (!currentPassword || !newPassword) {
+        return res.status(400).json({
+          success: false,
+          error: 'Current password and new password are required'
+        });
+      }
+
+      if (newPassword.length < 6) {
+        return res.status(400).json({
+          success: false,
+          error: 'New password must be at least 6 characters'
+        });
+      }
+
+      // Get user
+      const user = await prisma.user.findUnique({
+        where: { userId }
+      });
+
+      // Verify current password
+      const bcrypt = require('bcrypt');
+      const isPasswordValid = await bcrypt.compare(currentPassword, user.passwordHash);
+      
+      if (!isPasswordValid) {
+        return res.status(401).json({
+          success: false,
+          error: 'Current password is incorrect'
+        });
+      }
+
+      // Hash new password
+      const newPasswordHash = await bcrypt.hash(newPassword, 12);
+
+      // Update password
+      await prisma.user.update({
+        where: { userId },
+        data: { passwordHash: newPasswordHash }
+      });
+
+      return res.json({
+        success: true,
+        message: 'Password updated successfully'
+      });
+    } catch (error) {
+      console.error('Update password error:', error);
+      next(error);
+    }
+  }
 }
 
 module.exports = new DoctorController();
