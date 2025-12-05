@@ -86,7 +86,7 @@ const [newSlot, setNewSlot] = useState({ day: "Mon", startTime: "", endTime: "",
         // Transform Schedules for Weekly View
         const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
         const weekly = days.map(day => {
-          const daySchedules = schedulesData.filter(s => s.dayOfWeek.startsWith(day));
+const daySchedules = schedulesData.filter(s => s.weekDay === day);
           if (daySchedules.length > 0) {
             const start = daySchedules.reduce((min, s) => s.startTime < min ? s.startTime : min, "23:59");
             const end = daySchedules.reduce((max, s) => s.endTime > max ? s.endTime : max, "00:00");
@@ -103,7 +103,7 @@ const [newSlot, setNewSlot] = useState({ day: "Mon", startTime: "", endTime: "",
         // Transform Slots
         const formattedSlots = schedulesData.map(s => ({
           id: s.id,
-          day: s.dayOfWeek.substring(0, 3),
+          day: s.weekDay,
           time: s.startTime,
           capacity: s.maxCapacity
         }));
@@ -246,13 +246,11 @@ const [newSlot, setNewSlot] = useState({ day: "Mon", startTime: "", endTime: "",
 if (!newSlot.startTime || !newSlot.endTime || !doctorId) return;
 
     try {
-      const dayMap = { "Mon": "Monday", "Tue": "Tuesday", "Wed": "Wednesday", "Thu": "Thursday", "Fri": "Friday", "Sat": "Saturday", "Sun": "Sunday" };
-      const fullDay = dayMap[newSlot.day];
 
       await scheduleService.create({
         doctorId: doctorId,
         roomId: 1, // Default room, could be made selectable
-        dayOfWeek: fullDay,
+        weekDay: newSlot.day,
         startTime: newSlot.startTime,
         endTime: newSlot.endTime,
         maxCapacity: newSlot.capacity
@@ -262,7 +260,7 @@ if (!newSlot.startTime || !newSlot.endTime || !doctorId) return;
       const schedulesData = await scheduleService.getAll(doctorId);
       const formattedSlots = schedulesData.map(s => ({
         id: s.id,
-        day: s.dayOfWeek.substring(0, 3),
+        day: s.weekDay,
         time: s.startTime,
         capacity: s.maxCapacity
       }));
