@@ -70,13 +70,23 @@ export const doctorService = {
         return result.data;
     },
 
+    updateAppointment: async (appointmentId, appointmentData) => {
+        const result = await api.put(`/doctor/appointments/${appointmentId}`, appointmentData);
+        return result.data;
+    },
+
+
     // ===== Medical Records =====
-    // FIXED: Uses appointmentId, not patientId
     addMedicalRecord: async (appointmentId, recordData) => {
         const result = await api.post(
             `/doctor/appointments/${appointmentId}/medical-record`, 
             recordData
         );
+        return result.data;
+    },
+
+    getPatientMedicalHistory: async (patientId) => {
+        const result = await api.get(`/doctor/patients/${patientId}/medical-history`);
         return result.data;
     }
 };

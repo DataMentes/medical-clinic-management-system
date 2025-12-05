@@ -7,6 +7,9 @@ const authMiddleware = require('../middlewares/auth.middleware');
 router.use(authMiddleware.authenticate);
 router.use(authMiddleware.isAdmin);
 
+// ==================== DASHBOARD STATS ====================
+router.get('/stats', adminController.getStats);
+
 // ==================== SPECIALTY ROUTES ====================
 router.get('/specialties', adminController.getAllSpecialties);
 router.get('/specialties/:id', adminController.getSpecialtyById);
@@ -24,6 +27,7 @@ router.delete('/rooms/:id', adminController.deleteRoom);
 // ==================== PATIENT ROUTES ====================
 router.get('/patients', adminController.getAllPatients);
 router.get('/patients/:id', adminController.getPatientById);
+router.post('/patients', adminController.createPatient);
 router.put('/patients/:id', adminController.updatePatient);
 router.delete('/patients/:id', adminController.deletePatient);
 

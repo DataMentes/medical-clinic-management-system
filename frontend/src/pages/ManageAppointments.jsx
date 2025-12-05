@@ -1,7 +1,5 @@
 import { useState, useEffect } from "react";
-import { appointmentService } from "../api/appointmentService";
 import { adminService } from "../api/adminService";
-import { scheduleService } from "../api/supportingServices";
 
 export default function ManageAppointments() {
   const [appointments, setAppointments] = useState([]);
@@ -30,10 +28,10 @@ export default function ManageAppointments() {
     try {
       setLoading(true);
       const [appointmentsData, patientsData, doctorsData, schedulesData] = await Promise.all([
-        appointmentService.getAll(),
+        adminService.getAllAppointments(),
         adminService.getAllPatients(),
         adminService.getAllDoctors(),
-        scheduleService.getAll()
+        adminService.getAllSchedules()
       ]);
 
       setAppointments(appointmentsData);
@@ -86,7 +84,7 @@ export default function ManageAppointments() {
   const handleDelete = async (id) => {
     if (window.confirm("Are you sure you want to delete this appointment?")) {
       try {
-        await appointmentService.cancel(id);
+        await adminService.deleteAppointment(id);
         // Refresh or filter out
         setAppointments(prev => prev.filter(a => a.id !== id));
       } catch (error) {
@@ -111,7 +109,7 @@ export default function ManageAppointments() {
           bookingTime: new Date(formData.bookingTime).toISOString()
         };
 
-        await appointmentService.update(editingAppointment.id, updateData);
+        await adminService.updateAppointment(editingAppointment.id, updateData);
         alert("Appointment updated successfully");
         setShowModal(false);
         setEditingAppointment(null);

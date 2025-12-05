@@ -9,7 +9,7 @@ export default function DoctorDashboard() {
   const [todayAppointments, setTodayAppointments] = useState([]);
   const [weeklySchedule, setWeeklySchedule] = useState([]);
   const [slots, setSlots] = useState([]);
-  const [newSlot, setNewSlot] = useState({ day: "Mon", time: "", capacity: 1 });
+const [newSlot, setNewSlot] = useState({ day: "Mon", startTime: "", endTime: "", capacity: 1 });
   const [passwordChanging, setPasswordChanging] = useState(false);
   const [showAppointmentsDetails, setShowAppointmentsDetails] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -243,22 +243,18 @@ export default function DoctorDashboard() {
 
   const handleAddSlot = async (e) => {
     e.preventDefault();
-    if (!newSlot.time || !doctorId) return;
+if (!newSlot.startTime || !newSlot.endTime || !doctorId) return;
 
     try {
       const dayMap = { "Mon": "Monday", "Tue": "Tuesday", "Wed": "Wednesday", "Thu": "Thursday", "Fri": "Friday", "Sat": "Saturday", "Sun": "Sunday" };
       const fullDay = dayMap[newSlot.day];
 
-      const [hours, mins] = newSlot.time.split(':').map(Number);
-      const endHours = hours + 1;
-      const endTime = `${String(endHours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
-
       await scheduleService.create({
         doctorId: doctorId,
         roomId: 1, // Default room, could be made selectable
         dayOfWeek: fullDay,
-        startTime: newSlot.time,
-        endTime: endTime,
+        startTime: newSlot.startTime,
+        endTime: newSlot.endTime,
         maxCapacity: newSlot.capacity
       });
 
@@ -272,7 +268,7 @@ export default function DoctorDashboard() {
       }));
       setSlots(formattedSlots);
 
-      setNewSlot({ ...newSlot, time: "" });
+      setNewSlot({ ...newSlot, startTime: "", endTime: "", capacity: 1 });
     } catch (error) {
       console.error("Failed to add slot:", error);
       alert("Failed to add slot: " + (error.response?.data?.error || error.message));
@@ -557,20 +553,35 @@ export default function DoctorDashboard() {
                     setNewSlot({ ...newSlot, day: e.target.value })
                   }
                 >
+                  <option>Day</option>
+                  <option>Sat</option>
+                  <option>Sun</option>
                   <option>Mon</option>
                   <option>Tue</option>
                   <option>Wed</option>
                   <option>Thu</option>
                   <option>Fri</option>
+
                 </select>
               </label>
               <label className="field">
-                <span>Time</span>
+                <span>Start Time</span>
                 <input
                   type="time"
-                  value={newSlot.time}
+                  value={newSlot.startTime}
                   onChange={(e) =>
-                    setNewSlot({ ...newSlot, time: e.target.value })
+                    setNewSlot({ ...newSlot, startTime: e.target.value })
+                  }
+                  required
+                />
+              </label>
+              <label className="field">
+                <span>End Time</span>
+                <input
+                  type="time"
+                  value={newSlot.endTime}
+                  onChange={(e) =>
+                    setNewSlot({ ...newSlot, endTime: e.target.value })
                   }
                   required
                 />

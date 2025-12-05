@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { roomService } from "../api/supportingServices";
+import { adminService } from "../api/adminService";
 
 export default function ManageRooms() {
   const [rooms, setRooms] = useState([]);
@@ -18,12 +18,10 @@ export default function ManageRooms() {
   const fetchRooms = async () => {
     try {
       setLoading(true);
-      const data = await roomService.getAll();
-      const formattedRooms = data.map(r => ({
-        id: r.id,
-        roomName: r.name
-      }));
-      setRooms(formattedRooms);
+      const response = await adminService.getAllRooms();
+      // Backend returns: {success: true, data: {rooms: [...], pagination: {...}}}
+      const roomsData = response.rooms || [];
+      setRooms(roomsData);
     } catch (error) {
       console.error("Failed to fetch rooms:", error);
     } finally {
@@ -58,11 +56,11 @@ export default function ManageRooms() {
   const handleDelete = async (id) => {
     if (window.confirm("Are you sure you want to delete this room?")) {
       try {
-        await roomService.delete(id);
+        await adminService.deleteRoom(id);
         setRooms(prev => prev.filter(r => r.id !== id));
       } catch (error) {
         console.error("Failed to delete room:", error);
-        alert("Failed to delete room");
+        alert("Failed to delete room: " + (error.response?.data?.error || error.message));
       }
     }
   };
@@ -72,16 +70,16 @@ export default function ManageRooms() {
 
     try {
       const roomData = {
-        name: formData.roomName
+        roomName: formData.roomName
       };
 
       if (editingRoom) {
         // Update
-        await roomService.update(editingRoom.id, roomData);
+        await adminService.updateRoom(editingRoom.id, roomData);
         alert("Room updated successfully");
       } else {
         // Create
-        await roomService.create(roomData);
+        await adminService.createRoom(roomData);
         alert("Room created successfully");
       }
 

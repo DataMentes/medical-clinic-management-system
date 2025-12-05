@@ -1,6 +1,34 @@
 const prisma = require('../config/database');
 
 class AdminController {
+  /**
+   * Get dashboard statistics
+   * @route GET /api/admin/stats
+   */
+  async getStats(req, res, next) {
+    try {
+      const [totalPatients, totalDoctors, totalAppointments, totalSpecialties] = await Promise.all([
+        prisma.patient.count(),
+        prisma.doctor.count(),
+        prisma.appointment.count(),
+        prisma.specialty.count()
+      ]);
+
+      return res.json({
+        success: true,
+        data: {
+          totalPatients,
+          totalDoctors,
+          totalAppointments,
+          totalSpecialties
+        }
+      });
+    } catch (error) {
+      console.error('Get stats error:', error);
+      next(error);
+    }
+  }
+
   // ==================== SPECIALTY MANAGEMENT ====================
   
   /**
@@ -663,6 +691,131 @@ class AdminController {
   }
 
   /**
+   * Create new patient
+   * @route POST /api/admin/patients
+   */
+  async createPatient(req, res, next) {
+    try {
+      const { 
+        fullName, email, password, phoneNumber, 
+        gender, yearOfBirth 
+      } = req.body;
+      
+      // Validation
+      if (!fullName || !email || !password || !phoneNumber || !gender || !yearOfBirth) {
+        return res.status(400).json({
+          success: false,
+          error: 'All fields are required: fullName, email, password, phoneNumber, gender, yearOfBirth'
+        });
+      }
+      
+      // Validate gender
+      if (gender !== 'Male' && gender !== 'Female') {
+        return res.status(400).json({
+          success: false,
+          error: 'Gender must be either Male or Female'
+        });
+      }
+      
+      // Check if email already exists
+      const existingUser = await prisma.user.findUnique({
+        where: { email }
+      });
+      
+      if (existingUser) {
+        return res.status(409).json({
+          success: false,
+          error: 'Email already registered'
+        });
+      }
+      
+      // Check if phone number already exists
+      const existingPhone = await prisma.person.findUnique({
+        where: { phoneNumber }
+      });
+      
+      if (existingPhone) {
+        return res.status(409).json({
+          success: false,
+          error: 'Phone number already registered'
+        });
+      }
+      
+      // Hash password
+      const bcrypt = require('bcrypt');
+      const hashedPassword = await bcrypt.hash(password, 10);
+      
+      // Create patient in transaction
+      const patient = await prisma.$transaction(async (tx) => {
+        // 1. Create Person (roleId = 5 for Patient)
+        const person = await tx.person.create({
+          data: {
+            fullName,
+            phoneNumber,
+            roleId: 5, // Patient role
+            gender
+          }
+        });
+        
+        // 2. Create User
+        await tx.user.create({
+          data: {
+            userId: person.userId,
+            email,
+            passwordHash: hashedPassword,
+            active: 'Yes' // Auto-activate admin-created patients
+          }
+        });
+        
+        // 3. Create Patient
+        const newPatient = await tx.patient.create({
+          data: {
+            userId: person.userId,
+            yearOfBirth: parseInt(yearOfBirth)
+          }
+        });
+        
+        // Return with relations
+        return tx.patient.findUnique({
+          where: { id: newPatient.id },
+          include: {
+            person: {
+              include: {
+                user: {
+                  select: {
+                    email: true,
+                    active: true,
+                    registerDate: true
+                  }
+                }
+              }
+            }
+          }
+        });
+      });
+      
+      return res.status(201).json({
+        success: true,
+        message: 'Patient created successfully',
+        data: {
+          id: patient.id,
+          userId: patient.userId,
+          fullName: patient.person.fullName,
+          email: patient.person.user.email,
+          phoneNumber: patient.person.phoneNumber,
+          gender: patient.person.gender,
+          yearOfBirth: patient.yearOfBirth,
+          active: patient.person.user.active,
+          registerDate: patient.person.user.registerDate
+        }
+      });
+    } catch (error) {
+      console.error('Create patient error:', error);
+      next(error);
+    }
+  }
+
+  /**
    * Update patient
    * @route PUT /api/admin/patients/:id
    */
@@ -687,14 +840,17 @@ class AdminController {
       const updatedPatient = await prisma.$transaction(async (tx) => {
         // Update Person
         if (fullName || phoneNumber || gender) {
-          await tx.person.update({
-            where: { userId: patient.userId },
-            data: {
-              fullName,
-              phoneNumber,
-              gender
-            }
-          });
+          const personData = {};
+          if (fullName) personData.fullName = fullName;
+          if (phoneNumber) personData.phoneNumber = phoneNumber;
+          if (gender && (gender === 'Male' || gender === 'Female')) personData.gender = gender;
+          
+          if (Object.keys(personData).length > 0) {
+            await tx.person.update({
+              where: { userId: patient.userId },
+              data: personData
+            });
+          }
         }
         
         // Update Patient
@@ -804,18 +960,8 @@ class AdminController {
           where: { id: patient.id }
         });
         
-        // 4. Delete Person
+        // 4. Delete Person (this will CASCADE delete User and OTPVerification automatically)
         await tx.person.delete({
-          where: { userId: userId }
-        });
-        
-        // 5. Delete OTP
-        await tx.oTPVerification.deleteMany({
-          where: { userId: userId }
-        });
-        
-        // 6. Delete User
-        await tx.user.delete({
           where: { userId: userId }
         });
       });
@@ -891,9 +1037,12 @@ class AdminController {
         fullName: d.person.fullName,
         email: d.person.user.email,
         phoneNumber: d.person.phoneNumber,
+        gender: d.person.gender,
         specialty: d.specialty.name,
+        specialtyId: d.specialtyId,
         examinationFee: d.examinationFee,
         consultationFee: d.consultationFee,
+        biography: d.biography,
         active: d.person.user.active,
         schedulesCount: d._count.schedules
       }));
@@ -970,15 +1119,15 @@ class AdminController {
   async createDoctor(req, res, next) {
     try {
       const { 
-        email, password, fullName, phoneNumber, gender,
-        specialtyId, examinationFee, consultationFee 
+        fullName, email, password, phoneNumber,
+        gender, specialtyId, examinationFee, consultationFee, biography 
       } = req.body;
       
-      // Basic validation
-      if (!email || !password || !fullName || !specialtyId) {
+      // Validation
+      if (!fullName || !email || !password || !phoneNumber || !gender || !specialtyId) {
         return res.status(400).json({
           success: false,
-          error: 'Missing required fields'
+          error: 'Required fields: fullName, email, password, phoneNumber, gender, specialtyId'
         });
       }
       
@@ -997,7 +1146,7 @@ class AdminController {
       // Hash password (using bcrypt directly or helper)
       // For now assuming bcrypt is available or using simple hash for demo
       // In real app, use bcrypt.hash(password, 10)
-      const bcrypt = require('bcryptjs');
+      const bcrypt = require('bcrypt');
       const hashedPassword = await bcrypt.hash(password, 10);
       
       // Transaction to create User -> Person -> Doctor
@@ -1026,7 +1175,8 @@ class AdminController {
             userId: user.userId,
             specialtyId: parseInt(specialtyId),
             examinationFee: parseFloat(examinationFee || 0),
-            consultationFee: parseFloat(consultationFee || 0)
+            consultationFee: parseFloat(consultationFee || 0),
+            biography: biography || null
           },
           include: { specialty: true }
         });
@@ -1059,7 +1209,7 @@ class AdminController {
       const { id } = req.params;
       const { 
         fullName, phoneNumber, gender, active,
-        specialtyId, examinationFee, consultationFee 
+        specialtyId, examinationFee, consultationFee, biography 
       } = req.body;
       
       const doctor = await prisma.doctor.findUnique({
@@ -1078,14 +1228,17 @@ class AdminController {
       const updatedDoctor = await prisma.$transaction(async (tx) => {
         // Update Person
         if (fullName || phoneNumber || gender) {
-          await tx.person.update({
-            where: { userId: doctor.userId },
-            data: {
-              fullName,
-              phoneNumber,
-              gender
-            }
-          });
+          const personData = {};
+          if (fullName) personData.fullName = fullName;
+          if (phoneNumber) personData.phoneNumber = phoneNumber;
+          if (gender && (gender === 'Male' || gender === 'Female')) personData.gender = gender;
+          
+          if (Object.keys(personData).length > 0) {
+            await tx.person.update({
+              where: { userId: doctor.userId },
+              data: personData
+            });
+          }
         }
         
         // Update User (Active status)
@@ -1097,16 +1250,19 @@ class AdminController {
         }
         
         // Update Doctor
-        if (specialtyId || examinationFee || consultationFee) {
+        if (specialtyId || examinationFee !== undefined || consultationFee !== undefined || biography !== undefined) {
           const doctorData = {};
           if (specialtyId) doctorData.specialtyId = parseInt(specialtyId);
-          if (examinationFee) doctorData.examinationFee = parseFloat(examinationFee);
-          if (consultationFee) doctorData.consultationFee = parseFloat(consultationFee);
+          if (examinationFee !== undefined) doctorData.examinationFee = parseFloat(examinationFee);
+          if (consultationFee !== undefined) doctorData.consultationFee = parseFloat(consultationFee);
+          if (biography !== undefined) doctorData.biography = biography || null;
           
-          await tx.doctor.update({
-            where: { id: parseInt(id) },
-            data: doctorData
-          });
+          if (Object.keys(doctorData).length > 0) {
+            await tx.doctor.update({
+              where: { id: parseInt(id) },
+              data: doctorData
+            });
+          }
         }
         
         return tx.doctor.findUnique({
@@ -1176,11 +1332,7 @@ class AdminController {
         const userId = doctor.userId;
         
         // 1. Delete Schedules (and their appointments)
-        // Note: This assumes appointments can be deleted or set to null. 
-        // Ideally we should handle past appointments carefully.
-        // For now, we delete schedules which might fail if appointments exist.
-        // So we delete appointments first.
-        
+        // Note: Appointments are CASCADE deleted when schedules are deleted
         const scheduleIds = doctor.schedules.map(s => s.id);
         
         if (scheduleIds.length > 0) {
@@ -1200,13 +1352,8 @@ class AdminController {
           where: { id: doctor.id }
         });
         
-        // 3. Delete Person
+        // 3. Delete Person (this will CASCADE delete User and OTPVerification automatically)
         await tx.person.delete({
-          where: { userId: userId }
-        });
-        
-        // 4. Delete User
-        await tx.user.delete({
           where: { userId: userId }
         });
       });
@@ -1276,7 +1423,7 @@ class AdminController {
         dayOfWeek: s.dayOfWeek,
         startTime: s.startTime,
         endTime: s.endTime,
-        maxPatients: s.maxPatients,
+        maxCapacity: s.maxCapacity,
         appointmentsCount: s._count.appointments
       }));
       
@@ -1355,7 +1502,7 @@ class AdminController {
     try {
       const { 
         doctorId, roomId, dayOfWeek, 
-        startTime, endTime, maxPatients 
+        startTime, endTime, maxCapacity 
       } = req.body;
       
       // Validation
@@ -1432,7 +1579,7 @@ class AdminController {
           dayOfWeek,
           startTime,
           endTime,
-          maxPatients: parseInt(maxPatients || 20)
+          maxCapacity: parseInt(maxCapacity || 20)
         },
         include: {
           doctor: { include: { person: true } },
@@ -1459,7 +1606,7 @@ class AdminController {
     try {
       const { id } = req.params;
       const { 
-        roomId, dayOfWeek, startTime, endTime, maxPatients 
+        roomId, dayOfWeek, startTime, endTime, maxCapacity 
       } = req.body;
       
       const schedule = await prisma.doctorSchedule.findUnique({
@@ -1546,7 +1693,7 @@ class AdminController {
       if (dayOfWeek) data.dayOfWeek = dayOfWeek;
       if (startTime) data.startTime = startTime;
       if (endTime) data.endTime = endTime;
-      if (maxPatients) data.maxPatients = parseInt(maxPatients);
+      if (maxCapacity) data.maxCapacity = parseInt(maxCapacity);
       
       const updatedSchedule = await prisma.doctorSchedule.update({
         where: { id: parseInt(id) },
@@ -2322,7 +2469,7 @@ class AdminController {
       }
       
       // Hash password
-      const bcrypt = require('bcryptjs');
+      const bcrypt = require('bcrypt');
       const hashedPassword = await bcrypt.hash(password, 10);
       
       // Create User with Person (Receptionist role)
@@ -2385,14 +2532,17 @@ class AdminController {
       const updatedReceptionist = await prisma.$transaction(async (tx) => {
         // Update Person
         if (fullName || phoneNumber || gender) {
-          await tx.person.update({
-            where: { userId: parseInt(id) },
-            data: {
-              fullName,
-              phoneNumber,
-              gender
-            }
-          });
+          const personData = {};
+          if (fullName) personData.fullName = fullName;
+          if (phoneNumber) personData.phoneNumber = phoneNumber;
+          if (gender && (gender === 'Male' || gender === 'Female')) personData.gender = gender;
+          
+          if (Object.keys(personData).length > 0) {
+            await tx.person.update({
+              where: { userId: parseInt(id) },
+              data: personData
+            });
+          }
         }
         
         // Update User (Active status)
@@ -2442,15 +2592,10 @@ class AdminController {
         });
       }
       
-      // Delete transaction
+      // Delete transaction (User will be CASCADE deleted when Person is deleted)
       await prisma.$transaction(async (tx) => {
-        // Delete Person
+        // Delete Person (this will CASCADE delete User and OTPVerification automatically)
         await tx.person.delete({
-          where: { userId: parseInt(id) }
-        });
-        
-        // Delete User
-        await tx.user.delete({
           where: { userId: parseInt(id) }
         });
       });
@@ -2545,10 +2690,10 @@ class AdminController {
       } = req.body;
       
       // Validation
-      if (!email || !password || !fullName) {
+      if (!email || !password || !fullName || !phoneNumber) {
         return res.status(400).json({
           success: false,
-          error: 'Missing required fields'
+          error: 'Missing required fields: email, password, fullName, phoneNumber'
         });
       }
       
@@ -2565,7 +2710,7 @@ class AdminController {
       }
       
       // Hash password
-      const bcrypt = require('bcryptjs');
+      const bcrypt = require('bcrypt');
       const hashedPassword = await bcrypt.hash(password, 10);
       
       // Create User + Person (Role 3 = Admin)
@@ -2626,14 +2771,17 @@ class AdminController {
       const updatedAdmin = await prisma.$transaction(async (tx) => {
         // Update Person
         if (fullName || phoneNumber || gender) {
-          await tx.person.update({
-            where: { userId: parseInt(id) },
-            data: {
-              fullName,
-              phoneNumber,
-              gender
-            }
-          });
+          const personData = {};
+          if (fullName) personData.fullName = fullName;
+          if (phoneNumber) personData.phoneNumber = phoneNumber;
+          if (gender && (gender === 'Male' || gender === 'Female')) personData.gender = gender;
+          
+          if (Object.keys(personData).length > 0) {
+            await tx.person.update({
+              where: { userId: parseInt(id) },
+              data: personData
+            });
+          }
         }
         
         // Update User (Active status)
@@ -2701,15 +2849,10 @@ class AdminController {
         });
       }
       
-      // Delete transaction
+      // Delete transaction (User will be CASCADE deleted when Person is deleted)
       await prisma.$transaction(async (tx) => {
-        // Delete Person
+        // Delete Person (this will CASCADE delete User and OTPVerification automatically)
         await tx.person.delete({
-          where: { userId: parseInt(id) }
-        });
-        
-        // Delete User
-        await tx.user.delete({
           where: { userId: parseInt(id) }
         });
       });

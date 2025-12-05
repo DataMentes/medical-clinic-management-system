@@ -390,6 +390,79 @@ class DoctorController {
   }
 
   /**
+   * Update appointment
+   * @route PUT /api/doctor/appointments/:appointmentId
+   */
+  async updateAppointment(req, res, next) {
+    try {
+      const userId = req.user.userId;
+      const { appointmentId } = req.params;
+      const { type, status } = req.body;
+
+      // Get doctor info
+      const person = await prisma.person.findUnique({
+        where: { userId },
+        include: { doctor: true }
+      });
+
+      if (!person?.doctor) {
+        return res.status(404).json({
+          success: false,
+          error: 'Doctor profile not found'
+        });
+      }
+
+      // Get appointment
+      const appointment = await prisma.appointment.findUnique({
+        where: { id: parseInt(appointmentId) }
+      });
+
+      if (!appointment) {
+        return res.status(404).json({
+          success: false,
+          error: 'Appointment not found'
+        });
+      }
+
+      // Verify ownership
+      if (appointment.doctorId !== person.doctor.id) {
+        return res.status(403).json({
+          success: false,
+          error: 'Not authorized to update this appointment'
+        });
+      }
+
+      // Build update data (only status and appointmentType are editable)
+      const updateData = {};
+      if (status) updateData.status = status;
+      if (type) updateData.appointmentType = type;
+
+      // Update appointment
+      const updated = await prisma.appointment.update({
+        where: { id: parseInt(appointmentId) },
+        data: updateData,
+        include: {
+          patient: {
+            include: { person: true }
+          },
+          schedule: {
+            include: { room: true }
+          }
+        }
+      });
+
+      return res.json({
+        success: true,
+        message: 'Appointment updated successfully',
+        data: updated
+      });
+    } catch (error) {
+      console.error('Update appointment error:', error);
+      next(error);
+    }
+  }
+
+  /**
    * Get appointments for a specific week
    * @route GET /api/doctor/appointments/week?startDate=YYYY-MM-DD
    */
@@ -855,14 +928,34 @@ class DoctorController {
       const weekEnd = new Date(today);
       weekEnd.setDate(weekEnd.getDate() + 7);
       
-      // Aggregate statistics and data
-      const [todayCount, weekAppointments, scheduleCount] = await Promise.all([
-        // Count today's confirmed appointments
-        prisma.appointment.count({
+      // Get full appointments data (not just count)
+      const [todayAppointments, weekAppointments, scheduleCount] = await Promise.all([
+        // Get today's FULL appointments (not just count)
+        prisma.appointment.findMany({
           where: {
             doctorId,
             appointmentDate: { gte: today, lt: tomorrow },
-            status: 'Confirmed'
+            status: 'Confirmed' // Only Confirmed status (CheckedIn doesn't exist in enum)
+          },
+          include: {
+            patient: {
+              include: {
+                person: {
+                  select: {
+                    fullName: true,
+                    phoneNumber: true,
+                    gender: true
+                  }
+                }
+              }
+            },
+            schedule: {
+              include: { room: true }
+            },
+            medicalRecord: true
+          },
+          orderBy: {
+            schedule: { startTime: 'asc' }
           }
         }),
         
@@ -902,11 +995,12 @@ class DoctorController {
       return res.json({
         success: true,
         data: {
+          todayAppointments,  // Full array, not count
+          upcomingAppointments: weekAppointments,
           stats: {
-            todayAppointments: todayCount,
+            todayAppointmentsCount: todayAppointments.length,
             totalScheduleSlots: scheduleCount
-          },
-          upcomingAppointments: weekAppointments
+          }
         }
       });
       
@@ -947,7 +1041,7 @@ class DoctorController {
         where: {
           doctorId,
           appointmentDate: { gte: today, lt: tomorrow },
-          status: 'Confirmed' // Checked-in patients only
+          status: 'Confirmed' 
         },
         orderBy: { 
           appointmentDate: 'asc'
@@ -979,6 +1073,102 @@ class DoctorController {
       
     } catch (error) {
       console.error('Patients in clinic error:', error);
+      next(error);
+    }
+  }
+
+  /**
+   * Get patient's complete medical history
+   * @route GET /api/doctor/patients/:patientId/medical-history
+   */
+  async getPatientMedicalHistory(req, res, next) {
+    try {
+      const userId = req.user.userId;
+      const { patientId } = req.params;
+      
+      // Get doctor info
+      const person = await prisma.person.findUnique({
+        where: { userId },
+        include: { doctor: true }
+      });
+
+      if (!person?.doctor) {
+        return res.status(404).json({
+          success: false,
+          error: 'Doctor profile not found'
+        });
+      }
+
+      // Verify patient exists
+      const patient = await prisma.patient.findUnique({
+        where: { id: parseInt(patientId) },
+        include: {
+          person: {
+            select: {
+              fullName: true,
+              phoneNumber: true,
+              gender: true,
+              dateOfBirth: true
+            }
+          }
+        }
+      });
+
+      if (!patient) {
+        return res.status(404).json({
+          success: false,
+          error: 'Patient not found'
+        });
+      }
+
+      // Get all medical records for this patient
+      const medicalHistory = await prisma.medicalRecord.findMany({
+        where: {
+          appointment: {
+            patientId: parseInt(patientId)
+          }
+        },
+        include: {
+          appointment: {
+            include: {
+              doctor: {
+                include: {
+                  person: {
+                    select: {
+                      fullName: true
+                    }
+                  },
+                  specialty: {
+                    select: {
+                      name: true
+                    }
+                  }
+                }
+              },
+              schedule: {
+                select: {
+                  startTime: true,
+                  endTime: true
+                }
+              }
+            }
+          }
+        },
+        orderBy: {
+          createdAt: 'desc'
+        }
+      });
+
+      return res.json({
+        success: true,
+        data: {
+          patient,
+          medicalHistory
+        }
+      });
+      
+    } catch (error) {
+      console.error('Get patient medical history error:', error);
       next(error);
     }
   }

@@ -4,29 +4,33 @@ export const authService = {
     // Register new patient
     register: async (userData) => {
         const result = await api.post('/auth/register', userData);
-        if (result.data?.token) {
-            localStorage.setItem('token', result.data.token);
-            localStorage.setItem('user', JSON.stringify(result.data.user));
-            localStorage.setItem('userRole', result.data.user.role.toLowerCase());
-        }
-        return result.data;
+        // Interceptor unwraps to: {success, message, data: {userId, email, requiresVerification}}
+        // No token on registration - only after OTP verification
+        return result; // Return the whole result
     },
 
     // Login
     login: async (email, password) => {
         const result = await api.post('/auth/login', { email, password });
+        // Interceptor unwraps to: {success, message, data: {user, token, role, redirectTo}}
         if (result.data?.token) {
             localStorage.setItem('token', result.data.token);
             localStorage.setItem('user', JSON.stringify(result.data.user));
-            localStorage.setItem('userRole', result.data.user.role.toLowerCase());
+            localStorage.setItem('userRole', result.data.role.toLowerCase());
         }
-        return result.data;
+        return result;
     },
 
     // Verify OTP (FIXED parameter name)
     verifyOTP: async (email, otpCode) => {
         const result = await api.post('/auth/verify-otp', { email, otpCode });
-        return result.data;
+        // Interceptor unwraps to: {success, message, data: {user, person, patient, token, role}}
+        if (result.data?.token) {
+            localStorage.setItem('token', result.data.token);
+            localStorage.setItem('user', JSON.stringify(result.data.user));
+            localStorage.setItem('userRole', result.data.role.toLowerCase());
+        }
+        return result;
     },
 
     // Resend OTP

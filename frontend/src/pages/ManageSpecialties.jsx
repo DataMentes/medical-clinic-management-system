@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { specialtyService } from "../api/supportingServices";
+import { adminService } from "../api/adminService";
 
 export default function ManageSpecialties() {
   const [specialties, setSpecialties] = useState([]);
@@ -18,8 +18,10 @@ export default function ManageSpecialties() {
   const fetchSpecialties = async () => {
     try {
       setLoading(true);
-      const data = await specialtyService.getAll();
-      setSpecialties(data);
+      const response = await adminService.getAllSpecialties();
+      // Backend returns: {success: true, data: {specialties: [...], pagination: {...}}}
+      const specialtiesData = response.specialties || [];
+      setSpecialties(specialtiesData);
     } catch (error) {
       console.error("Failed to fetch specialties:", error);
     } finally {
@@ -54,11 +56,11 @@ export default function ManageSpecialties() {
   const handleDelete = async (id) => {
     if (window.confirm("Are you sure you want to delete this specialty?")) {
       try {
-        await specialtyService.delete(id);
+        await adminService.deleteSpecialty(id);
         setSpecialties(prev => prev.filter(s => s.id !== id));
       } catch (error) {
         console.error("Failed to delete specialty:", error);
-        alert("Failed to delete specialty");
+        alert("Failed to delete specialty: " + (error.response?.data?.error || error.message));
       }
     }
   };
@@ -69,11 +71,11 @@ export default function ManageSpecialties() {
     try {
       if (editingSpecialty) {
         // Update
-        await specialtyService.update(editingSpecialty.id, { name: formData.name });
+        await adminService.updateSpecialty(editingSpecialty.id, { name: formData.name });
         alert("Specialty updated successfully");
       } else {
         // Create
-        await specialtyService.create({ name: formData.name });
+        await adminService.createSpecialty({ name: formData.name });
         alert("Specialty created successfully");
       }
 

@@ -11,7 +11,7 @@ export default function RegisterPage() {
   const [formData, setFormData] = useState({
     fullName: "",
     email: "",
-    gender: "MALE",
+    gender: "Male",
     phone: "",
     yearOfBirth: "",
     password: "",
@@ -40,12 +40,15 @@ export default function RegisterPage() {
         email: formData.email,
         password: formData.password,
         fullName: formData.fullName,
-        phone: formData.phone,
+        phoneNumber: formData.phone, // Backend expects phoneNumber, not phone
         gender: formData.gender,
         yearOfBirth: formData.yearOfBirth ? parseInt(formData.yearOfBirth) : null
       };
 
-      await authService.register(registerData);
+      const response = await authService.register(registerData);
+      
+      // Registration successful - OTP auto-sent by backend
+      alert(response.message || "Registration successful! Please check your email for OTP.");
       setShowOTPForm(true);
     } catch (err) {
       console.error('Registration error:', err);
@@ -184,12 +187,14 @@ export default function RegisterPage() {
             name="gender"
             value={formData.gender}
             onChange={handleChange}
+            required
             style={{
               width: "100%",
             }}
           >
-            <option value="MALE">Male</option>
-            <option value="FEMALE">Female</option>
+            <option value="">Select Gender</option>
+            <option value="Male">Male</option>
+            <option value="Female">Female</option>
           </select>
         </label>
 

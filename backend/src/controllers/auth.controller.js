@@ -454,7 +454,7 @@ class AuthController {
       const userId = req.user.userId;
 
       const user = await prisma.user.findUnique({
-        where: { id: userId },
+        where: { userId: userId },
         include: {
           person: {
             include: {

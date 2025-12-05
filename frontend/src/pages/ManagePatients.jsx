@@ -21,19 +21,11 @@ export default function ManagePatients() {
   }, []);
 
   const fetchPatients = async () => {
-    try {
-      setLoading(true);
-      const data = await adminService.getAllPatients();
-      const formattedPatients = data.map(p => ({
-        id: p.id,
-        fullName: p.user.fullName,
-        email: p.user.email,
-        phone: p.user.phone,
-        gender: p.user.gender,
-        yearOfBirth: p.dateOfBirth ? new Date(p.dateOfBirth).getFullYear() : "",
-        userId: p.userId
-      }));
-      setPatients(formattedPatients);
+  try {
+    setLoading(true);
+    const response = await adminService.getAllPatients();
+    const patientsArray = response.data?.patients || response.patients || [];
+    setPatients(patientsArray);
     } catch (error) {
       console.error("Failed to fetch patients:", error);
     } finally {

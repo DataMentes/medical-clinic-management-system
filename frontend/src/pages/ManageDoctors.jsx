@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { adminService } from "../api/adminService";
-import { specialtyService } from "../api/supportingServices";
+// Removed supportingServices import - using adminService instead
 
 export default function ManageDoctors() {
   const [doctors, setDoctors] = useState([]);
@@ -13,7 +13,7 @@ export default function ManageDoctors() {
     email: "",
     phone: "",
     password: "",
-    gender: "male",
+    gender: "Male",  // Capitalized to match backend format
     specialtyId: "",
     examinationFee: "",
     consultationFee: "",
@@ -28,18 +28,24 @@ export default function ManageDoctors() {
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [doctorsData, specialtiesData] = await Promise.all([
+      const [doctorsResponse, specialtiesResponse] = await Promise.all([
         adminService.getAllDoctors(),
-        specialtyService.getAll()
+        adminService.getAllSpecialties() // Fixed: was getAll()
       ]);
+
+      // Backend returns: {doctors: [...], pagination: {...}}
+      // Access the doctors array from the response
+      const doctorsData = doctorsResponse.doctors || [];
+      const specialtiesData = specialtiesResponse.specialties || [];
 
       const formattedDoctors = doctorsData.map(d => ({
         id: d.id,
-        fullName: d.user.fullName,
-        email: d.user.email,
-        phone: d.user.phone,
-        gender: d.user.gender,
-        specialty: d.specialty?.name || "N/A",
+        userId: d.userId,
+        fullName: d.fullName,
+        email: d.email,
+        phone: d.phoneNumber,
+        gender: d.gender,
+        specialty: d.specialty,
         specialtyId: d.specialtyId,
         examinationFee: d.examinationFee,
         consultationFee: d.consultationFee,
@@ -70,7 +76,7 @@ export default function ManageDoctors() {
       email: "",
       phone: "",
       password: "",
-      gender: "male",
+      gender: "Male",  // Capitalized to match backend format
       specialtyId: "",
       examinationFee: "",
       consultationFee: "",
@@ -86,7 +92,7 @@ export default function ManageDoctors() {
       email: doctor.email,
       phone: doctor.phone || "",
       password: "",
-      gender: doctor.gender || "male",
+      gender: doctor.gender || "Male",
       specialtyId: doctor.specialtyId || "",
       examinationFee: doctor.examinationFee?.toString() || "",
       consultationFee: doctor.consultationFee?.toString() || "",
@@ -114,8 +120,8 @@ export default function ManageDoctors() {
       const doctorData = {
         fullName: formData.fullName,
         email: formData.email,
-        phone: formData.phone,
-        gender: formData.gender,
+        phoneNumber: formData.phone, // Backend expects phoneNumber
+        gender: formData.gender.charAt(0).toUpperCase() + formData.gender.slice(1), // Capitalize: Male/Female
         specialtyId: parseInt(formData.specialtyId),
         examinationFee: parseFloat(formData.examinationFee),
         consultationFee: parseFloat(formData.consultationFee),
@@ -322,8 +328,8 @@ export default function ManageDoctors() {
                   onChange={handleChange}
                   required
                 >
-                  <option value="male">Male</option>
-                  <option value="female">Female</option>
+                  <option value="Male">Male</option>
+                  <option value="Female">Female</option>
                 </select>
               </label>
               <label className="field">

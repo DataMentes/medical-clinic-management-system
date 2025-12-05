@@ -1,6 +1,12 @@
 import api from './config';
 
 export const adminService = {
+    // ===== Dashboard Stats =====
+    getStats: async () => {
+        const result = await api.get('/admin/stats');
+        return result.data;
+    },
+
     // ===== Admins =====
     getAllAdmins: async () => {
         const result = await api.get('/admin/admins');
@@ -56,6 +62,11 @@ export const adminService = {
 
     getPatientById: async (id) => {
         const result = await api.get(`/admin/patients/${id}`);
+        return result.data;
+    },
+
+    createPatient: async (data) => {
+        const result = await api.post('/admin/patients', data);
         return result.data;
     },
 

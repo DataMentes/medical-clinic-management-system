@@ -11,7 +11,7 @@ export default function ManageAdmins() {
     email: "",
     phone: "",
     password: "",
-    gender: "male"
+    gender: "Male"
   });
 
   // Fetch admins from API
@@ -22,16 +22,16 @@ export default function ManageAdmins() {
   const fetchAdmins = async () => {
     try {
       setLoading(true);
-      const data = await adminService.getAllAdmins();
-      // Transform data if needed, backend returns user object inside admin
-      // Assuming backend returns list of admins with user details
-      const formattedAdmins = data.map(admin => ({
-        id: admin.id,
-        fullName: admin.user.fullName,
-        email: admin.user.email,
-        phone: admin.user.phone,
-        gender: admin.user.gender,
-        userId: admin.userId
+      const response = await adminService.getAllAdmins();
+      // Backend returns: {success: true, data: {admins: [...], pagination: {...}}}
+      const adminsData = response.admins || [];
+      
+      const formattedAdmins = adminsData.map(admin => ({
+        userId: admin.userId,
+        fullName: admin.fullName,
+        email: admin.email,
+        phone: admin.phoneNumber,
+        gender: admin.gender
       }));
       setAdmins(formattedAdmins);
     } catch (error) {
@@ -51,7 +51,7 @@ export default function ManageAdmins() {
 
   const handleAdd = () => {
     setEditingAdmin(null);
-    setFormData({ fullName: "", email: "", phone: "", password: "", gender: "male" });
+    setFormData({ fullName: "", email: "", phone: "", password: "", gender: "Male" });
     setShowModal(true);
   };
 
@@ -62,19 +62,19 @@ export default function ManageAdmins() {
       email: admin.email,
       phone: admin.phone,
       password: "",
-      gender: admin.gender || "male"
+      gender: admin.gender || "Male"
     });
     setShowModal(true);
   };
 
-  const handleDelete = async (id) => {
+  const handleDelete = async (userId) => {
     if (window.confirm("Are you sure you want to delete this admin?")) {
       try {
-        await adminService.deleteAdmin(id);
-        setAdmins(prev => prev.filter(a => a.id !== id));
+        await adminService.deleteAdmin(userId);
+        setAdmins(prev => prev.filter(a => a.userId !== userId));
       } catch (error) {
         console.error("Failed to delete admin:", error);
-        alert("Failed to delete admin");
+        alert("Failed to delete admin: " + (error.response?.data?.error || error.message));
       }
     }
   };
@@ -83,34 +83,29 @@ export default function ManageAdmins() {
     e.preventDefault();
 
     try {
+      const adminData = {
+        fullName: formData.fullName,
+        email: formData.email,
+        phoneNumber: formData.phone,
+        gender: formData.gender.charAt(0).toUpperCase() + formData.gender.slice(1) // Capitalize: Male/Female
+      };
+
       if (editingAdmin) {
         // Update
-        const updateData = {
-          fullName: formData.fullName,
-          email: formData.email,
-          phone: formData.phone,
-          gender: formData.gender
-        };
         if (formData.password) {
-          updateData.password = formData.password;
+          adminData.password = formData.password;
         }
-
-        await adminService.updateAdmin(editingAdmin.id, updateData);
+        await adminService.updateAdmin(editingAdmin.userId, adminData);
         alert("Admin updated successfully");
       } else {
         // Create
-        await adminService.createAdmin({
-          fullName: formData.fullName,
-          email: formData.email,
-          phone: formData.phone,
-          password: formData.password,
-          gender: formData.gender
-        });
+        adminData.password = formData.password;
+        await adminService.createAdmin(adminData);
         alert("Admin created successfully");
       }
 
       setShowModal(false);
-      setFormData({ fullName: "", email: "", phone: "", password: "", gender: "male" });
+      setFormData({ fullName: "", email: "", phone: "", password: "", gender: "Male" });
       setEditingAdmin(null);
       fetchAdmins(); // Refresh list
 
@@ -163,7 +158,7 @@ export default function ManageAdmins() {
           <tbody>
             {admins.map((admin) => (
               <tr
-                key={admin.id}
+                key={admin.userId}
                 style={{
                   borderBottom: "1px solid var(--border-subtle)",
                   transition: "background var(--transition-fast)"
@@ -185,7 +180,7 @@ export default function ManageAdmins() {
                     </button>
                     <button
                       className="btn-primary"
-                      onClick={() => handleDelete(admin.id)}
+                      onClick={() => handleDelete(admin.userId)}
                       style={{
                         padding: "0.4rem 0.8rem",
                         fontSize: "0.85rem",
@@ -288,8 +283,8 @@ export default function ManageAdmins() {
                   onChange={handleChange}
                   required
                 >
-                  <option value="male">Male</option>
-                  <option value="female">Female</option>
+                  <option value="Male">Male</option>
+                  <option value="Female">Female</option>
                 </select>
               </label>
               <div style={{ display: "flex", gap: "0.75rem", marginTop: "1.5rem" }}>

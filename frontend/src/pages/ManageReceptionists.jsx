@@ -11,7 +11,7 @@ export default function ManageReceptionists() {
     email: "",
     phone: "",
     password: "",
-    gender: "male"
+    gender: "Male"
   });
 
   // Fetch receptionists
@@ -22,14 +22,16 @@ export default function ManageReceptionists() {
   const fetchReceptionists = async () => {
     try {
       setLoading(true);
-      const data = await adminService.getAllReceptionists();
-      const formattedReceptionists = data.map(r => ({
-        id: r.id,
-        fullName: r.user.fullName,
-        email: r.user.email,
-        phone: r.user.phone,
-        gender: r.user.gender,
-        userId: r.userId
+      const response = await adminService.getAllReceptionists();
+      // Backend returns: {success: true, data: {receptionists: [...], pagination: {...}}}
+      const receptionistsData = response.receptionists || [];
+      
+      const formattedReceptionists = receptionistsData.map(r => ({
+        userId: r.userId,
+        fullName: r.fullName,
+        email: r.email,
+        phone: r.phoneNumber,
+        gender: r.gender
       }));
       setReceptionists(formattedReceptionists);
     } catch (error) {
@@ -54,7 +56,7 @@ export default function ManageReceptionists() {
       email: "",
       phone: "",
       password: "",
-      gender: "male"
+      gender: "Male"
     });
     setShowModal(true);
   };
@@ -66,19 +68,19 @@ export default function ManageReceptionists() {
       email: receptionist.email,
       phone: receptionist.phone || "",
       password: "",
-      gender: receptionist.gender || "male"
+      gender: receptionist.gender || "Male"
     });
     setShowModal(true);
   };
 
-  const handleDelete = async (id) => {
+  const handleDelete = async (userId) => {
     if (window.confirm("Are you sure you want to delete this receptionist?")) {
       try {
-        await adminService.deleteReceptionist(id);
-        setReceptionists(prev => prev.filter(r => r.id !== id));
+        await adminService.deleteReceptionist(userId);
+        setReceptionists(prev => prev.filter(r => r.userId !== userId));
       } catch (error) {
         console.error("Failed to delete receptionist:", error);
-        alert("Failed to delete receptionist");
+        alert("Failed to delete receptionist: " + (error.response?.data?.error || error.message));
       }
     }
   };
@@ -90,8 +92,8 @@ export default function ManageReceptionists() {
       const receptionistData = {
         fullName: formData.fullName,
         email: formData.email,
-        phone: formData.phone,
-        gender: formData.gender
+        phoneNumber: formData.phone,
+        gender: formData.gender.charAt(0).toUpperCase() + formData.gender.slice(1) // Capitalize: Male/Female
       };
 
       if (editingReceptionist) {
@@ -99,7 +101,7 @@ export default function ManageReceptionists() {
         if (formData.password) {
           receptionistData.password = formData.password;
         }
-        await adminService.updateReceptionist(editingReceptionist.id, receptionistData);
+        await adminService.updateReceptionist(editingReceptionist.userId, receptionistData);
         alert("Receptionist updated successfully");
       } else {
         // Create
@@ -161,7 +163,7 @@ export default function ManageReceptionists() {
           <tbody>
             {receptionists.map((receptionist) => (
               <tr
-                key={receptionist.id}
+                key={receptionist.userId}
                 style={{
                   borderBottom: "1px solid var(--border-subtle)",
                   transition: "background var(--transition-fast)"
@@ -183,7 +185,7 @@ export default function ManageReceptionists() {
                     </button>
                     <button
                       className="btn-primary"
-                      onClick={() => handleDelete(receptionist.id)}
+                      onClick={() => handleDelete(receptionist.userId)}
                       style={{
                         padding: "0.4rem 0.8rem",
                         fontSize: "0.85rem",
@@ -286,8 +288,8 @@ export default function ManageReceptionists() {
                   onChange={handleChange}
                   required
                 >
-                  <option value="male">Male</option>
-                  <option value="female">Female</option>
+                  <option value="Male">Male</option>
+                  <option value="Female">Female</option>
                 </select>
               </label>
               <div style={{ display: "flex", gap: "0.75rem", marginTop: "1.5rem" }}>

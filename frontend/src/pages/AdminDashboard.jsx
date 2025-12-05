@@ -16,8 +16,10 @@ export default function AdminDashboard() {
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        const data = await adminService.getStats();
-        setStats(data);
+        const response = await adminService.getStats();
+        // Backend returns: {success: true, data: {totalPatients, ...}}
+        // adminService.getStats() returns result.data which is {success: true, data: {...}}
+        setStats(response.data || response);
       } catch (error) {
         console.error('Failed to fetch stats:', error);
       } finally {
@@ -91,4 +93,3 @@ export default function AdminDashboard() {
     </div>
   );
 }
-

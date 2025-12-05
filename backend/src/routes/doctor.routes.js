@@ -30,6 +30,9 @@ router.get('/appointments/week', doctorController.getWeekAppointments);
 // Get appointment details with patient's medical history
 router.get('/appointments/:appointmentId', doctorController.getAppointmentDetails);
 
+// Update appointment
+router.put('/appointments/:appointmentId', doctorController.updateAppointment);
+
 // Add medical record for appointment
 router.post('/appointments/:appointmentId/medical-record', doctorController.addMedicalRecord);
 
@@ -50,5 +53,7 @@ router.get('/dashboard', doctorController.getDashboard);
 // Get patients in clinic (today's confirmed)
 router.get('/patients-in-clinic', doctorController.getPatientsInClinic);
 
+// Get patient's medical history
+router.get('/patients/:patientId/medical-history', doctorController.getPatientMedicalHistory);
 
 module.exports = router;
