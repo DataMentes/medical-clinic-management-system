@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { doctorService } from "../api/doctorService";
-import { appointmentService } from "../api/appointmentService";
 import { scheduleService } from "../api/supportingServices";
 import { authService } from "../api/authService";
 
@@ -218,7 +217,7 @@ export default function DoctorDashboard() {
     if (!editingAppointmentId) return;
 
     try {
-      await appointmentService.update(editingAppointmentId, {
+      await doctorService.updateAppointment(editingAppointmentId, {
         appointmentTime: editAppointment.time,
         type: editAppointment.type.toUpperCase(),
         status: editAppointment.checkedIn ? 'CHECKED_IN' : 'CONFIRMED'

@@ -46,4 +46,9 @@ router.put('/profile/email', patientController.updateEmail);
 // Update password
 router.put('/profile/password', patientController.updatePassword);
 
+// ===== Dashboard =====
+// Get dashboard data
+router.get('/dashboard', patientController.getDashboard);
+
+
 module.exports = router;

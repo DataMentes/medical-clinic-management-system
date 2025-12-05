@@ -7,6 +7,11 @@ const authMiddleware = require('../middlewares/auth.middleware');
 router.use(authMiddleware.authenticate);
 router.use(authMiddleware.isReceptionist);
 
+// ===== Dashboard =====
+// Get dashboard data
+router.get('/dashboard', receptionController.getDashboard);
+
+
 // ===== Patient Management =====
 // Add walk-in patient (Person + Patient, no User account)
 router.post('/patients/walk-in', receptionController.addWalkInPatient);

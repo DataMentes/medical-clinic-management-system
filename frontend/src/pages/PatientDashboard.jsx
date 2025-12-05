@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { patientService } from "../api/patientService";
-import { appointmentService } from "../api/appointmentService";
 
 export default function PatientDashboard() {
   const [upcomingAppointments, setUpcomingAppointments] = useState([]);
@@ -54,12 +53,12 @@ export default function PatientDashboard() {
     if (!window.confirm('Are you sure you want to cancel this appointment?')) return;
 
     try {
-      await appointmentService.cancel(id);
+      await patientService.cancelAppointment(id);
       setUpcomingAppointments(prev => prev.filter(appt => appt.id !== id));
       alert('Appointment cancelled successfully');
     } catch (error) {
       console.error('Failed to cancel appointment:', error);
-      alert('Failed to cancel appointment. Please try again.');
+      alert(error.message || 'Failed to cancel appointment. Please try again.');
     }
   };
 

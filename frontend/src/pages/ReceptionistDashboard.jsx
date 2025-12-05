@@ -1,8 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { receptionistService } from "../api/receptionistService";
-import { appointmentService } from "../api/appointmentService";
-import { specialtyService, scheduleService } from "../api/supportingServices";
 import { adminService } from "../api/adminService";
 
 export default function ReceptionistDashboard() {
@@ -36,12 +34,12 @@ export default function ReceptionistDashboard() {
           doctorsData,
           specialtiesData,
           schedulesData,
-          todayAppointmentsData
+          dashboardData
         ] = await Promise.all([
           adminService.getAllDoctors(),
-          specialtyService.getAll(),
-          scheduleService.getAll(),
-          receptionistService.getTodayAppointmentsByDoctor()
+          adminService.getAllSpecialties(),
+          adminService.getAllSchedules(),
+          receptionistService.getDashboard()
         ]);
 
         // Transform doctors data
@@ -58,20 +56,18 @@ export default function ReceptionistDashboard() {
         setSpecialties(specialtiesData);
         setSchedules(schedulesData);
 
-        // Flatten appointments
-        const flatAppointments = todayAppointmentsData.flatMap(group =>
-          group.appointments.map(appt => ({
-            id: appt.id,
-            patientId: appt.patientId,
-            patientName: appt.patient.user.fullName,
-            phoneNumber: appt.patient.user.phone,
-            doctorId: appt.doctorId,
-            type: appt.type === 'EXAMINATION' ? 'Examination' : 'Consultation',
-            status: appt.status === 'CONFIRMED' ? 'Confirmed' : appt.status === 'CHECKED_IN' ? 'Checked-In' : appt.status,
-            feePaid: appt.feePaid,
-            bookingTime: new Date(appt.appointmentDate.split('T')[0] + 'T' + appt.appointmentTime).toISOString()
-          }))
-        );
+        // Format appointments from dashboard
+        const flatAppointments = dashboardData.todaysAppointments.map(appt => ({
+          id: appt.id,
+          patientId: appt.patient.id,
+          patientName: appt.patient.person.fullName,
+          phoneNumber: appt.patient.person.phoneNumber,
+          doctorId: appt.doctor.id,
+          type: appt.type === 'EXAMINATION' ? 'Examination' : 'Consultation',
+          status: appt.status === 'CONFIRMED' ? 'Confirmed' : appt.status === 'CHECKED_IN' ? 'Checked-In' : appt.status,
+          feePaid: appt.feePaid,
+          bookingTime: new Date(appt.appointmentDate.split('T')[0] + 'T' + appt.appointmentTime).toISOString()
+        }));
         setAppointments(flatAppointments);
 
       } catch (error) {
@@ -86,7 +82,7 @@ export default function ReceptionistDashboard() {
 
   const handleCheckIn = async (appointmentId) => {
     try {
-      await appointmentService.checkIn(appointmentId);
+      await receptionistService.checkInPatient(appointmentId);
 
       const updated = appointments.map((appt) =>
         appt.id === appointmentId
@@ -106,7 +102,7 @@ export default function ReceptionistDashboard() {
       alert("Patient checked in successfully!");
     } catch (error) {
       console.error('Check-in failed:', error);
-      alert('Failed to check in patient');
+      alert(error.message || 'Failed to check in patient');
     }
   };
 
@@ -186,7 +182,7 @@ export default function ReceptionistDashboard() {
 
       const appointmentDate = bookFormData.selectedDate.toISOString().split('T')[0];
 
-      await appointmentService.book({
+      await receptionistService.bookAppointment({
         patientId,
         doctorId: bookFormData.selectedDoctorId,
         appointmentDate,
@@ -196,20 +192,18 @@ export default function ReceptionistDashboard() {
       });
 
       // Refresh appointments
-      const todayAppointmentsData = await receptionistService.getTodayAppointmentsByDoctor();
-      const flatAppointments = todayAppointmentsData.flatMap(group =>
-        group.appointments.map(appt => ({
-          id: appt.id,
-          patientId: appt.patientId,
-          patientName: appt.patient.user.fullName,
-          phoneNumber: appt.patient.user.phone,
-          doctorId: appt.doctorId,
-          type: appt.type === 'EXAMINATION' ? 'Examination' : 'Consultation',
-          status: appt.status === 'CONFIRMED' ? 'Confirmed' : appt.status === 'CHECKED_IN' ? 'Checked-In' : appt.status,
-          feePaid: appt.feePaid,
-          bookingTime: new Date(appt.appointmentDate.split('T')[0] + 'T' + appt.appointmentTime).toISOString()
-        }))
-      );
+      const dashboardData = await receptionistService.getDashboard();
+      const flatAppointments = dashboardData.todaysAppointments.map(appt => ({
+        id: appt.id,
+        patientId: appt.patient.id,
+        patientName: appt.patient.person.fullName,
+        phoneNumber: appt.patient.person.phoneNumber,
+        doctorId: appt.doctor.id,
+        type: appt.type === 'EXAMINATION' ? 'Examination' : 'Consultation',
+        status: appt.status === 'CONFIRMED' ? 'Confirmed' : appt.status === 'CHECKED_IN' ? 'Checked-In' : appt.status,
+        feePaid: appt.feePaid,
+        bookingTime: new Date(appt.appointmentDate.split('T')[0] + 'T' + appt.appointmentTime).toISOString()
+      }));
       setAppointments(flatAppointments);
 
       setShowBookForm(false);

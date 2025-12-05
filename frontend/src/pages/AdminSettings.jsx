@@ -56,7 +56,7 @@ export default function AdminSettings() {
     // Send OTP
     const sendOTP = async (email) => {
         try {
-            await authService.sendOTP(email);
+            await authService.resendOTP(email);
             alert(`OTP has been sent to ${email}`);
         } catch (error) {
             console.error("Failed to send OTP:", error);

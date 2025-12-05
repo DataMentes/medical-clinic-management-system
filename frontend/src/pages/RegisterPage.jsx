@@ -35,12 +35,21 @@ export default function RegisterPage() {
     setLoading(true);
 
     try {
-      // Send OTP first
-      await authService.sendOTP(formData.email);
+      // Register user (OTP is sent automatically by backend)
+      const registerData = {
+        email: formData.email,
+        password: formData.password,
+        fullName: formData.fullName,
+        phone: formData.phone,
+        gender: formData.gender,
+        yearOfBirth: formData.yearOfBirth ? parseInt(formData.yearOfBirth) : null
+      };
+
+      await authService.register(registerData);
       setShowOTPForm(true);
     } catch (err) {
-      console.error('Send OTP error:', err);
-      setError(err.response?.data?.error || "Failed to send OTP. Please try again.");
+      console.error('Registration error:', err);
+      setError(err.message || "Registration failed. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -52,26 +61,15 @@ export default function RegisterPage() {
     setLoading(true);
 
     try {
-      // Verify OTP
+      // Verify OTP (activates account)
       await authService.verifyOTP(formData.email, otp);
 
-      // Register user
-      const registerData = {
-        email: formData.email,
-        password: formData.password,
-        fullName: formData.fullName,
-        phone: formData.phone,
-        gender: formData.gender,
-        yearOfBirth: formData.yearOfBirth ? parseInt(formData.yearOfBirth) : null
-      };
-
-      const response = await authService.register(registerData);
-
-      // Navigate to patient dashboard
-      navigate("/patient-dashboard");
+      // Navigate to login page after successful verification
+      alert("Account verified successfully! Please login.");
+      navigate("/login");
     } catch (err) {
-      console.error('Registration error:', err);
-      setError(err.response?.data?.error || "Registration failed. Please try again.");
+      console.error('OTP verification error:', err);
+      setError(err.message || "OTP verification failed. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -79,11 +77,11 @@ export default function RegisterPage() {
 
   const handleResendOTP = async () => {
     try {
-      await authService.sendOTP(formData.email);
+      await authService.resendOTP(formData.email);
       alert("OTP has been resent to your email");
     } catch (err) {
       console.error('Resend OTP error:', err);
-      setError("Failed to resend OTP. Please try again.");
+      setError(err.message || "Failed to resend OTP. Please try again.");
     }
   };
 
@@ -244,7 +242,7 @@ export default function RegisterPage() {
       </div>
 
       <button type="submit" className="btn-primary" disabled={loading}>
-        {loading ? "Sending OTP..." : "Sign up"}
+        {loading ? "Registering..." : "Sign up"}
       </button>
     </form>
   );

@@ -43,4 +43,12 @@ router.put('/profile/phone', doctorController.updatePhone);
 // Update password
 router.put('/profile/password', doctorController.updatePassword);
 
+// ===== Dashboard =====
+// Get dashboard data
+router.get('/dashboard', doctorController.getDashboard);
+
+// Get patients in clinic (today's confirmed)
+router.get('/patients-in-clinic', doctorController.getPatientsInClinic);
+
+
 module.exports = router;

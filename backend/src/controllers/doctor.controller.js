@@ -825,6 +825,163 @@ class DoctorController {
       next(error);
     }
   }
+
+  /**
+   * Get doctor dashboard data (aggregated)
+   * @route GET /api/doctor/dashboard
+   */
+  async getDashboard(req, res, next) {
+    try {
+      const userId = req.user.userId;
+      
+      // Get doctor info
+      const person = await prisma.person.findUnique({
+        where: { userId },
+        include: { doctor: true }
+      });
+
+      if (!person?.doctor) {
+        return res.status(404).json({
+          success: false,
+          error: 'Doctor profile not found'
+        });
+      }
+
+      const doctorId = person.doctor.id;
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const tomorrow = new Date(today);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      const weekEnd = new Date(today);
+      weekEnd.setDate(weekEnd.getDate() + 7);
+      
+      // Aggregate statistics and data
+      const [todayCount, weekAppointments, scheduleCount] = await Promise.all([
+        // Count today's confirmed appointments
+        prisma.appointment.count({
+          where: {
+            doctorId,
+            appointmentDate: { gte: today, lt: tomorrow },
+            status: 'Confirmed'
+          }
+        }),
+        
+        // Get next week's appointments
+        prisma.appointment.findMany({
+          where: {
+            doctorId,
+            appointmentDate: { gte: today, lt: weekEnd },
+            status: { in: ['Pending', 'Confirmed'] }
+          },
+          take: 10,
+          orderBy: { appointmentDate: 'asc' },
+          include: {
+            patient: {
+              include: {
+                person: { 
+                  select: { 
+                    fullName: true, 
+                    phoneNumber: true,
+                    gender: true
+                  } 
+                }
+              }
+            },
+            schedule: { 
+              include: { room: true } 
+            }
+          }
+        }),
+        
+        // Count total schedule entries
+        prisma.doctorSchedule.count({
+          where: { doctorId }
+        })
+      ]);
+      
+      return res.json({
+        success: true,
+        data: {
+          stats: {
+            todayAppointments: todayCount,
+            totalScheduleSlots: scheduleCount
+          },
+          upcomingAppointments: weekAppointments
+        }
+      });
+      
+    } catch (error) {
+      console.error('Doctor dashboard error:', error);
+      next(error);
+    }
+  }
+
+  /**
+   * Get patients currently in clinic (today's confirmed appointments)
+   * @route GET /api/doctor/patients-in-clinic
+   */
+  async getPatientsInClinic(req, res, next) {
+    try {
+      const userId = req.user.userId;
+      
+      // Get doctor info
+      const person = await prisma.person.findUnique({
+        where: { userId },
+        include: { doctor: true }
+      });
+
+      if (!person?.doctor) {
+        return res.status(404).json({
+          success: false,
+          error: 'Doctor profile not found'
+        });
+      }
+
+      const doctorId = person.doctor.id;
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const tomorrow = new Date(today);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      
+      const patientsInClinic = await prisma.appointment.findMany({
+        where: {
+          doctorId,
+          appointmentDate: { gte: today, lt: tomorrow },
+          status: 'Confirmed' // Checked-in patients only
+        },
+        orderBy: { 
+          appointmentDate: 'asc'
+        },
+        include: {
+          patient: {
+            include: {
+              person: {
+                select: {
+                  fullName: true,
+                  phoneNumber: true,
+                  gender: true
+                }
+              }
+            }
+          },
+          schedule: {
+            include: { 
+              room: true 
+            }
+          }
+        }
+      });
+      
+      return res.json({
+        success: true,
+        data: patientsInClinic
+      });
+      
+    } catch (error) {
+      console.error('Patients in clinic error:', error);
+      next(error);
+    }
+  }
 }
 
 module.exports = new DoctorController();

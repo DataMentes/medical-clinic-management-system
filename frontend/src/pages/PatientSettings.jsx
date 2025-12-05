@@ -51,13 +51,13 @@ export default function PatientSettings() {
     }));
   };
 
-  const sendOTP = async (email) => {
+  const sendOTPForEmail = async (email) => {
     try {
-      await authService.sendOTP(email);
+      await patientService.requestEmailUpdateOTP(email);
       alert(`OTP has been sent to ${email}`);
     } catch (error) {
       console.error("Failed to send OTP:", error);
-      alert("Failed to send OTP");
+      alert(error.message || "Failed to send OTP");
     }
   };
 
@@ -68,7 +68,7 @@ export default function PatientSettings() {
 
     if (emailChanged) {
       setPendingFormData(formData);
-      await sendOTP(formData.email);
+      await sendOTPForEmail(formData.email);
       setShowOTPModal(true);
     } else {
       performSave(formData);
@@ -80,17 +80,15 @@ export default function PatientSettings() {
     setSaving(true);
 
     try {
-      const updateData = {
-        phone: dataToSave.phone,
-        email: dataToSave.email,
-        fullName: dataToSave.fullName
-      };
-
-      if (dataToSave.password) {
-        updateData.password = dataToSave.password;
+      // Update phone if changed
+      if (dataToSave.phone) {
+        await patientService.updatePhone(dataToSave.phone);
       }
 
-      await patientService.updateSettings(updateData);
+      // Update password if provided
+      if (dataToSave.password) {
+        await patientService.updatePassword(dataToSave.password, dataToSave.password);
+      }
 
       alert("Settings updated successfully!");
       setOriginalEmail(dataToSave.email);
@@ -102,7 +100,7 @@ export default function PatientSettings() {
 
     } catch (error) {
       console.error("Failed to update settings:", error);
-      alert("Failed to update settings: " + (error.response?.data?.error || error.message));
+      alert("Failed to update settings: " + (error.message || "Unknown error"));
     } finally {
       setSaving(false);
     }
@@ -117,14 +115,14 @@ export default function PatientSettings() {
     }
 
     try {
-      await authService.verifyOTP(pendingFormData.email, otp);
+      await patientService.updateEmail(pendingFormData.email, otp);
       await performSave(pendingFormData);
       setShowOTPModal(false);
       setOtp("");
       setPendingFormData(null);
     } catch (error) {
       console.error("OTP Verification failed:", error);
-      alert("Invalid OTP");
+      alert(error.message || "Invalid OTP");
     }
   };
 
@@ -133,7 +131,7 @@ export default function PatientSettings() {
 
     setResendingOTP(true);
     try {
-      await sendOTP(pendingFormData.email);
+      await sendOTPForEmail(pendingFormData.email);
     } finally {
       setResendingOTP(false);
     }

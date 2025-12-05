@@ -3,43 +3,42 @@ import api from './config';
 export const authService = {
     // Register new patient
     register: async (userData) => {
-        const response = await api.post('/auth/register', userData);
-        if (response.data.token) {
-            localStorage.setItem('token', response.data.token);
-            localStorage.setItem('user', JSON.stringify(response.data.user));
-            localStorage.setItem('userRole', response.data.user.role.toLowerCase());
+        const result = await api.post('/auth/register', userData);
+        if (result.data?.token) {
+            localStorage.setItem('token', result.data.token);
+            localStorage.setItem('user', JSON.stringify(result.data.user));
+            localStorage.setItem('userRole', result.data.user.role.toLowerCase());
         }
-        return response.data;
+        return result.data;
     },
 
     // Login
     login: async (email, password) => {
-        const response = await api.post('/auth/login', { email, password });
-        console.log(response.data);
-        if (response.data.token) {
-            localStorage.setItem('token', response.data.token);
-            localStorage.setItem('user', JSON.stringify(response.data.user));
-            localStorage.setItem('userRole', response.data.user.role.toLowerCase());
+        const result = await api.post('/auth/login', { email, password });
+        if (result.data?.token) {
+            localStorage.setItem('token', result.data.token);
+            localStorage.setItem('user', JSON.stringify(result.data.user));
+            localStorage.setItem('userRole', result.data.user.role.toLowerCase());
         }
-        return response.data;
+        return result.data;
     },
 
-    // Send OTP 
-    sendOTP: async (email) => {
-        const response = await api.post('/auth/send-otp', { email });
-        return response.data;
+    // Verify OTP (FIXED parameter name)
+    verifyOTP: async (email, otpCode) => {
+        const result = await api.post('/auth/verify-otp', { email, otpCode });
+        return result.data;
     },
 
-    // Verify OTP
-    verifyOTP: async (email, code) => {
-        const response = await api.post('/auth/verify-otp', { email, code });
-        return response.data;
+    // Resend OTP
+    resendOTP: async (email) => {
+        const result = await api.post('/auth/resend-otp', { email });
+        return result.data;
     },
 
     // Get current user
     getCurrentUser: async () => {
-        const response = await api.get('/auth/me');
-        return response.data.user;
+        const result = await api.get('/auth/me');
+        return result.data.user;
     },
 
     // Logout
@@ -49,18 +48,16 @@ export const authService = {
         localStorage.removeItem('userRole');
     },
 
-    // Get stored user
+    // Helper methods (no changes)
     getStoredUser: () => {
         const user = localStorage.getItem('user');
         return user ? JSON.parse(user) : null;
     },
 
-    // Get stored token
     getToken: () => {
         return localStorage.getItem('token');
     },
 
-    // Check if authenticated
     isAuthenticated: () => {
         return !!localStorage.getItem('token');
     }

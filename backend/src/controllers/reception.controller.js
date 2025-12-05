@@ -505,6 +505,89 @@ class ReceptionController {
       next(error);
     }
   }
+
+  /**
+   * Get receptionist dashboard data (aggregated)
+   * @route GET /api/reception/dashboard
+   */
+  async getDashboard(req, res, next) {
+    try {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const tomorrow = new Date(today);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      
+      // Aggregate today's statistics
+      const [totalToday, pending, confirmed] = await Promise.all([
+        // Total appointments today
+        prisma.appointment.count({
+          where: {
+            appointmentDate: { gte: today, lt: tomorrow }
+          }
+        }),
+        
+        // Pending appointments (all future)
+        prisma.appointment.count({
+          where: {
+            appointmentDate: { gte: today },
+            status: 'Pending'
+          }
+        }),
+        
+        // Today's confirmed appointments (checked-in)
+        prisma.appointment.findMany({
+          where: {
+            appointmentDate: { gte: today, lt: tomorrow },
+            status: 'Confirmed'
+          },
+          take: 15,
+          orderBy: {
+            appointmentDate: 'asc'
+          },
+          include: {
+            patient: {
+              include: {
+                person: { 
+                  select: { 
+                    fullName: true, 
+                    phoneNumber: true 
+                  } 
+                }
+              }
+            },
+            doctor: {
+              include: {
+                person: { 
+                  select: { fullName: true } 
+                },
+                specialty: { 
+                  select: { specialtyName: true } 
+                }
+              }
+            },
+            schedule: { 
+              include: { room: true } 
+            }
+          }
+        })
+      ]);
+      
+      return res.json({
+        success: true,
+        data: {
+          stats: {
+            todayTotal: totalToday,
+            pendingAppointments: pending
+          },
+          todayAppointments: confirmed
+        }
+      });
+      
+    } catch (error) {
+      console.error('Reception dashboard error:', error);
+      next(error);
+    }
+  }
 }
 
 module.exports = new ReceptionController();

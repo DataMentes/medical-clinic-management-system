@@ -510,6 +510,91 @@ class PatientController {
       next(error);
     }
   }
+
+  /**
+   * Get patient dashboard data (aggregated)
+   * @route GET /api/patient/dashboard
+   */
+  async getDashboard(req, res, next) {
+    try {
+      const userId = req.user.userId; // From auth middleware
+      
+      // Get patient ID
+      const person = await prisma.person.findUnique({
+        where: { userId },
+        include: { patient: true }
+      });
+
+      if (!person?.patient) {
+        return res.status(404).json({
+          success: false,
+          error: 'Patient not found'
+        });
+      }
+
+      const patientId = person.patient.id;
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
+      // Aggregate data from existing queries
+      const [upcoming, pastCount, recordsCount] = await Promise.all([
+        // Get next 5 upcoming appointments
+        prisma.appointment.findMany({
+          where: {
+            patientId,
+            appointmentDate: { gte: today },
+            status: { in: ['Pending', 'Confirmed'] }
+          },
+          take: 5,
+          orderBy: { appointmentDate: 'asc' },
+          include: {
+            doctor: {
+              include: {
+                person: { 
+                  select: { fullName: true } 
+                },
+                specialty: { 
+                  select: { specialtyName: true } 
+                }
+              }
+            },
+            schedule: { 
+              include: { room: true } 
+            }
+          }
+        }),
+        
+        // Count past completed appointments
+        prisma.appointment.count({
+          where: {
+            patientId,
+            appointmentDate: { lt: today },
+            status: 'Completed'
+          }
+        }),
+        
+        // Count medical records
+        prisma.medicalRecord.count({
+          where: { patientId }
+        })
+      ]);
+      
+      return res.json({
+        success: true,
+        data: {
+          upcomingAppointments: upcoming,
+          stats: {
+            totalPastAppointments: pastCount,
+            totalMedicalRecords: recordsCount
+          }
+        }
+      });
+      
+    } catch (error) {
+      console.error('Patient dashboard error:', error);
+      next(error);
+    }
+  }
 }
 
 module.exports = new PatientController();
