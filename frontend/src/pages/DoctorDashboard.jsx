@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import MedicalRecordEditorModal from "../components/MedicalRecordEditorModal.jsx";
+import * as doctorApi from "../api/doctor.api";
 
 const DOCTOR_APPOINTMENTS_KEY = "doctorAppointments";
 const PATIENTS_IN_CLINIC_KEY = "patientsInClinicNow";
@@ -110,22 +111,45 @@ export default function DoctorDashboard() {
 
   // تحميل مواعيد الدكتور المحجوزة من المرضى
   useEffect(() => {
-    const stored = JSON.parse(
-      localStorage.getItem(DOCTOR_APPOINTMENTS_KEY) || "null"
-    );
-    if (stored && Array.isArray(stored) && stored.length > 0) {
-      setTodayAppointments(normalizeAppointments(stored));
-    } else {
-      setTodayAppointments((prev) => normalizeAppointments(prev));
+    // Log current doctor info
+    const token = localStorage.getItem('token');
+    if (token) {
+      try {
+        const payload = JSON.parse(atob(token.split('.')[1]));
+        console.log('👨‍⚕️ ========== LOGGED IN DOCTOR ==========');
+        console.log('User ID:', payload.userId);
+        console.log('Doctor ID:', payload.doctorId);
+        console.log('Email:', payload.email);
+        console.log('Role:', payload.role);
+        console.log('========================================');
+      } catch (e) {
+        console.error('Failed to parse token');
+      }
     }
 
-    // الحصول على معرف الدكتور الحالي (من localStorage أو افتراضي)
-    const savedDoctors = JSON.parse(localStorage.getItem(DOCTORS_KEY) || "[]");
-    if (savedDoctors.length > 0) {
-      // في التطبيق الحقيقي، سيتم الحصول على معرف الدكتور من session/login
-      // هنا نستخدم أول طبيب كافتراضي للعرض
-      setCurrentDoctorId(savedDoctors[0].id);
+    // Fetch today's appointments from API
+    async function fetchAppointments() {
+      try {
+        const response = await doctorApi.getTodayAppointments();
+        console.log('✅ API Response:', response);
+        if (response.data && Array.isArray(response.data)) {
+          console.log('📅 Appointments fetched:', response.data.length);
+          const formatted = response.data.map(apt => ({
+            id: apt.id,
+            time: apt.schedule?.startTime || '00:00',
+            patient: apt.patient?.person?.fullName || 'Unknown',
+            reason: apt.appointmentType || 'Appointment',
+            type: apt.appointmentType || 'Examination',
+            status: apt.status || 'Pending'
+          }));
+          setTodayAppointments(formatted);
+        }
+      } catch (error) {
+        console.error('❌ Error fetching appointments:', error);
+      }
     }
+
+    fetchAppointments();
   }, []);
 
   // تحديث قائمة المرضى داخل العيادة

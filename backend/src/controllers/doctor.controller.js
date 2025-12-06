@@ -377,7 +377,7 @@ class DoctorController {
             gte: today,
             lt: tomorrow
           },
-          status: 'Confirmed'
+          status: { in: ['Pending', 'Confirmed'] }
         },
         include: {
           patient: {
