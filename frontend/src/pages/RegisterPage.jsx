@@ -1,13 +1,13 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { authService } from "../api/authService";
+import { register, verifyOTP } from "../api/auth.api.js";
 
 export default function RegisterPage() {
   const navigate = useNavigate();
   const [showOTPForm, setShowOTPForm] = useState(false);
   const [otp, setOtp] = useState("");
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
     fullName: "",
     email: "",
@@ -26,32 +26,31 @@ export default function RegisterPage() {
   const handleRegisterSubmit = async (e) => {
     e.preventDefault();
     setError("");
-
+    
     if (formData.password !== formData.confirmPassword) {
       setError("Passwords do not match!");
       return;
     }
 
     setLoading(true);
-
     try {
-      // Register user (OTP is sent automatically by backend)
-      const registerData = {
+      // استدعاء API للتسجيل
+      const response = await register({
         email: formData.email,
         password: formData.password,
         fullName: formData.fullName,
-        phoneNumber: formData.phone, // Backend expects phoneNumber, not phone
+        phoneNumber: formData.phone,
         gender: formData.gender,
-        yearOfBirth: formData.yearOfBirth ? parseInt(formData.yearOfBirth) : null
-      };
+        yearOfBirth: formData.yearOfBirth,
+      });
 
-      const response = await authService.register(registerData);
-      
-      // Registration successful - OTP auto-sent by backend
-      alert(response.message || "Registration successful! Please check your email for OTP.");
-      setShowOTPForm(true);
+      if (response.success) {
+        // عرض OTP form بعد التسجيل الناجح
+        setShowOTPForm(true);
+      } else {
+        setError(response.error || "Registration failed. Please try again.");
+      }
     } catch (err) {
-      console.error('Registration error:', err);
       setError(err.message || "Registration failed. Please try again.");
     } finally {
       setLoading(false);
@@ -64,27 +63,52 @@ export default function RegisterPage() {
     setLoading(true);
 
     try {
-      // Verify OTP (activates account)
-      await authService.verifyOTP(formData.email, otp);
+      // تأكد من البيانات قبل الإرسال
+      console.log('🔍 OTP Verification Data:', {
+        email: formData.email,
+        otp: otp,
+        otpLength: otp.length
+      });
 
-      // Navigate to login page after successful verification
-      alert("Account verified successfully! Please login.");
-      navigate("/login");
+      // استدعاء API للتحقق من OTP
+      const response = await verifyOTP(formData.email, otp);
+
+      console.log('✅ OTP Verification Response:', response);
+
+      if (response.success && response.data) {
+        // استخدام redirectTo من الـ response
+        const redirectPath = response.data.redirectTo || "/patient/dashboard";
+        navigate(redirectPath);
+      } else {
+        setError("OTP verification failed. Please try again.");
+      }
     } catch (err) {
-      console.error('OTP verification error:', err);
-      setError(err.message || "OTP verification failed. Please try again.");
+      console.error('❌ OTP Verification Error:', err);
+      setError(err.message || "Invalid OTP. Please try again.");
     } finally {
       setLoading(false);
     }
   };
 
   const handleResendOTP = async () => {
+    setError("");
+    setLoading(true);
+    
     try {
-      await authService.resendOTP(formData.email);
+      // إعادة إرسال OTP عن طريق إعادة التسجيل
+      await register({
+        email: formData.email,
+        password: formData.password,
+        fullName: formData.fullName,
+        phoneNumber: formData.phone,
+        gender: formData.gender,
+        yearOfBirth: formData.yearOfBirth,
+      });
       alert("OTP has been resent to your email");
     } catch (err) {
-      console.error('Resend OTP error:', err);
-      setError(err.message || "Failed to resend OTP. Please try again.");
+      setError(err.message || "Failed to resend OTP");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -96,14 +120,39 @@ export default function RegisterPage() {
           Please enter the OTP sent to your email to complete registration.
         </p>
 
-        {error && <div className="error-message" style={{ color: 'red', marginBottom: '1rem' }}>{error}</div>}
+        {error && (
+          <div
+            style={{
+              padding: "0.75rem",
+              backgroundColor: "rgba(239, 68, 68, 0.1)",
+              border: "1px solid rgba(239, 68, 68, 0.3)",
+              borderRadius: "var(--radius-md)",
+              color: "#dc2626",
+              marginBottom: "1rem",
+              fontSize: "0.9rem"
+            }}
+          >
+            {error}
+          </div>
+        )}
+
+        <label className="field">
+          <span>Email</span>
+          <input
+            type="email"
+            required
+            value={formData.email}
+            onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
+            placeholder="Enter your email"
+          />
+        </label>
 
         <label className="field">
           <span>OTP</span>
           <input
             type="text"
             required
-            placeholder="Enter 6-digit OTP"
+            placeholder="Enter OTP"
             value={otp}
             onChange={(e) => setOtp(e.target.value)}
             maxLength={6}
@@ -116,7 +165,6 @@ export default function RegisterPage() {
           <button
             type="button"
             onClick={handleResendOTP}
-            disabled={loading}
             style={{
               background: "none",
               border: "none",
@@ -127,22 +175,6 @@ export default function RegisterPage() {
             }}
           >
             Resend OTP
-          </button>
-        </div>
-        <div style={{ marginTop: "1rem", textAlign: "center" }}>
-          <button
-            type="button"
-            onClick={() => setShowOTPForm(false)}
-            disabled={loading}
-            style={{
-              background: "none",
-              border: "none",
-              color: "var(--text-soft)",
-              cursor: "pointer",
-              fontSize: "0.9rem",
-            }}
-          >
-            ← Back to registration
           </button>
         </div>
       </form>
@@ -156,7 +188,21 @@ export default function RegisterPage() {
         Register as a new patient to start booking appointments online.
       </p>
 
-      {error && <div className="error-message" style={{ color: 'red', marginBottom: '1rem' }}>{error}</div>}
+      {error && (
+        <div
+          style={{
+            padding: "0.75rem",
+            backgroundColor: "rgba(239, 68, 68, 0.1)",
+            border: "1px solid rgba(239, 68, 68, 0.3)",
+            borderRadius: "var(--radius-md)",
+            color: "#dc2626",
+            marginBottom: "1rem",
+            fontSize: "0.9rem"
+          }}
+        >
+          {error}
+        </div>
+      )}
 
       <label className="field">
         <span>Full Name</span>
@@ -187,14 +233,12 @@ export default function RegisterPage() {
             name="gender"
             value={formData.gender}
             onChange={handleChange}
-            required
             style={{
               width: "100%",
             }}
           >
-            <option value="">Select Gender</option>
-            <option value="Male">Male</option>
-            <option value="Female">Female</option>
+            <option value="male">Male</option>
+            <option value="female">Female</option>
           </select>
         </label>
 
@@ -208,6 +252,7 @@ export default function RegisterPage() {
             max={new Date().getFullYear()}
             value={formData.yearOfBirth}
             onChange={handleChange}
+            required
           />
         </label>
       </div>
@@ -247,7 +292,7 @@ export default function RegisterPage() {
       </div>
 
       <button type="submit" className="btn-primary" disabled={loading}>
-        {loading ? "Registering..." : "Sign up"}
+        {loading ? "Creating account..." : "Sign up"}
       </button>
     </form>
   );

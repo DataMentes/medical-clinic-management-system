@@ -1,4 +1,5 @@
 const prisma = require('../../config/database');
+const { NotFoundError, ValidationError } = require('../../utils/error');
 const personService = require('../common/person.service');
 const patientService = require('../patient/patient.service');
 const appointmentService = require('../appointment/appointment.service');
@@ -43,7 +44,7 @@ class ReceptionistService {
     });
 
     if (!schedule) {
-      throw new Error('Schedule not found');
+      throw new NotFoundError('Schedule');
     }
 
     // Count existing appointments
@@ -55,7 +56,7 @@ class ReceptionistService {
     });
 
     if (appointmentCount >= schedule.maxCapacity) {
-      throw new Error('Schedule is full');
+      throw new ValidationError('Schedule is full');
     }
 
     // Create appointment

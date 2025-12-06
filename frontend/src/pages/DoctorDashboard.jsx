@@ -1,21 +1,59 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { doctorService } from "../api/doctorService";
-import { authService } from "../api/authService";
+import MedicalRecordEditorModal from "../components/MedicalRecordEditorModal.jsx";
+
+const DOCTOR_APPOINTMENTS_KEY = "doctorAppointments";
+const PATIENTS_IN_CLINIC_KEY = "patientsInClinicNow";
+const APPOINTMENTS_KEY = "adminAppointmentsData";
+const DOCTORS_KEY = "doctorsData";
+
+const initialTodayAppointments = [
+  {
+    id: 1,
+    time: "09:00",
+    patient: "Sarah Ahmed",
+    reason: "Routine examination",
+    type: "Examination",
+    status: "Scheduled"
+  },
+  {
+    id: 2,
+    time: "10:30",
+    patient: "Mohamed Ali",
+    reason: "Follow-up consultation",
+    type: "Consultation",
+    status: "Scheduled"
+  }
+];
+
+const initialWeeklySchedule = [
+  { day: "Mon", start: "09:00", end: "15:00", max: 12 },
+  { day: "Tue", start: "10:00", end: "16:00", max: 10 },
+  { day: "Wed", start: "09:00", end: "14:00", max: 8 },
+  { day: "Thu", start: "11:00", end: "17:00", max: 10 },
+  { day: "Fri", start: "09:00", end: "13:00", max: 6 }
+];
+
+const mockRooms = [
+  { id: 1, roomName: "Room 101" },
+  { id: 2, roomName: "Room 102" },
+  { id: 3, roomName: "Room 201" },
+  { id: 4, roomName: "Room 202" }
+];
+
+const initialSlots = [
+  { id: 1, day: "Mon", startTime: "09:00", endTime: "12:00", roomId: 1, capacity: 4 },
+  { id: 2, day: "Mon", startTime: "13:00", endTime: "16:00", roomId: 2, capacity: 4 },
+  { id: 3, day: "Tue", startTime: "11:00", endTime: "14:00", roomId: 1, capacity: 3 }
+];
 
 export default function DoctorDashboard() {
-  const navigate = useNavigate();
-  const [todayAppointments, setTodayAppointments] = useState([]);
-  const [weeklySchedule, setWeeklySchedule] = useState([]);
-  const [slots, setSlots] = useState([]);
-  const [rooms, setRooms] = useState([]);
-  const [newSlot, setNewSlot] = useState({ 
-    day: "Mon", 
-    startTime: "", 
-    endTime: "", 
-    capacity: 1,
-    roomId: "" 
-  });
+  const [todayAppointments, setTodayAppointments] = useState(
+    initialTodayAppointments
+  );
+  const [weeklySchedule] = useState(initialWeeklySchedule);
+  const [slots, setSlots] = useState(initialSlots);
+  const [rooms] = useState(mockRooms);
+  const [newSlot, setNewSlot] = useState({ day: "Mon", startTime: "", endTime: "", roomId: "", capacity: 1 });
   const [passwordChanging, setPasswordChanging] = useState(false);
   const [showAppointmentsDetails, setShowAppointmentsDetails] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -35,8 +73,11 @@ export default function DoctorDashboard() {
   });
   const [expandedScheduleId, setExpandedScheduleId] = useState(null);
   const [patientsInClinic, setPatientsInClinic] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [doctorId, setDoctorId] = useState(null);
+  const [currentDoctorId, setCurrentDoctorId] = useState(null);
+
+  // Modal state for medical record editor
+  const [showMedicalRecordModal, setShowMedicalRecordModal] = useState(false);
+  const [selectedPatient, setSelectedPatient] = useState(null);
 
   const weekdayOrder = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -53,119 +94,104 @@ export default function DoctorDashboard() {
     return date;
   };
 
-  // Fetch all data
+  const normalizeAppointments = (list) =>
+    list.map((appt) => {
+      const derivedType =
+        appt.type ||
+        (appt.reason?.toLowerCase().includes("consult")
+          ? "Consultation"
+          : "Examination");
+      return {
+        ...appt,
+        type: derivedType,
+        status: appt.status || "Scheduled"
+      };
+    });
+
+  // تحميل مواعيد الدكتور المحجوزة من المرضى
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        // Get current user to get doctorId
-        const currentUser = await authService.getCurrentUser();
-        const currentDoctorId = currentUser?.doctor?.id;
-        setDoctorId(currentDoctorId);
+    const stored = JSON.parse(
+      localStorage.getItem(DOCTOR_APPOINTMENTS_KEY) || "null"
+    );
+    if (stored && Array.isArray(stored) && stored.length > 0) {
+      setTodayAppointments(normalizeAppointments(stored));
+    } else {
+      setTodayAppointments((prev) => normalizeAppointments(prev));
+    }
 
-        // Fetch data independently to prevent one failure from breaking everything
-        try {
-          const dashboardData = await doctorService.getDashboard();
-          const formattedAppointments = dashboardData.todayAppointments.map(appt => ({
-            id: appt.id,
-            time: appt.schedule?.startTime || 'N/A',
-            patient: appt.patient?.person?.fullName || 'Unknown',
-            reason: appt.appointmentType === 'Examination' ? 'Routine examination' : 'Follow-up consultation',
-            type: appt.appointmentType,
-            status: appt.status === 'Confirmed' ? 'Scheduled' : appt.status === 'Completed' ? 'Completed' : appt.status
-          }));
-          setTodayAppointments(formattedAppointments);
-        } catch (e) {
-          console.error("Dashboard data failed", e);
-        }
-
-        try {
-          const patientsData = await doctorService.getPatientsInClinic();
-          const formattedPatients = patientsData.map(p => ({
-            id: p.patient.id,
-            appointmentId: p.id,
-            name: p.patient?.person?.fullName || 'Unknown',
-            reason: p.appointmentType === 'Examination' ? 'Examination' : 'Consultation',
-            checkInTime: p.appointmentDate
-          }));
-          setPatientsInClinic(formattedPatients);
-        } catch (e) {
-          console.error("Patients data failed", e);
-        }
-
-        try {
-          const schedules = await doctorService.getMySchedule();
-          
-          // Weekly Schedule Logic (showing all recurring slots)
-          const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-          const weekly = days.map(day => {
-            const daySchedules = (schedules || []).filter(s => s.weekDay === day);
-            if (daySchedules.length > 0) {
-              const start = daySchedules.reduce((min, s) => s.startTime < min ? s.startTime : min, "23:59");
-              const end = daySchedules.reduce((max, s) => s.endTime > max ? s.endTime : max, "00:00");
-              const max = daySchedules.reduce((sum, s) => sum + s.maxCapacity, 0);
-              return { day, start, end, max };
-            }
-            return null;
-          }).filter(Boolean);
-          
-          if (weekly.length > 0) setWeeklySchedule(weekly);
-
-          // Slots Logic
-          const formattedSlots = (schedules || []).map(s => ({
-            id: s.id,
-            day: s.weekDay,
-            time: s.startTime,
-            capacity: s.maxCapacity,
-            roomName: s.room?.roomName || 'N/A'
-          }));
-          setSlots(formattedSlots);
-
-        } catch (e) {
-          console.error("Schedule data failed", e);
-        }
-
-        try {
-          const rooms = await doctorService.getRooms();
-          if (rooms && Array.isArray(rooms)) {
-            setRooms(rooms);
-            if (rooms.length > 0) {
-              setNewSlot(prev => ({ ...prev, roomId: rooms[0].id }));
-            }
-          }
-        } catch (e) {
-          console.error("Rooms data failed", e);
-        }
-        
-        setLoading(false);
-      } catch (error) {
-        console.error('Fatal dashboard error:', error);
-        setLoading(false);
-      }
-    };
-
-    fetchData();
+    // الحصول على معرف الدكتور الحالي (من localStorage أو افتراضي)
+    const savedDoctors = JSON.parse(localStorage.getItem(DOCTORS_KEY) || "[]");
+    if (savedDoctors.length > 0) {
+      // في التطبيق الحقيقي، سيتم الحصول على معرف الدكتور من session/login
+      // هنا نستخدم أول طبيب كافتراضي للعرض
+      setCurrentDoctorId(savedDoctors[0].id);
+    }
   }, []);
 
-  // Poll for updates (e.g. new check-ins)
+  // تحديث قائمة المرضى داخل العيادة
   useEffect(() => {
-    const interval = setInterval(async () => {
-      try {
-        const patientsInClinicData = await doctorService.getPatientsInClinic();
-        const formattedPatientsInClinic = patientsInClinicData.data?.map(p => ({
-          id: p.patient.id,
-          appointmentId: p.id,
-          name: p.patient?.person?.fullName || 'Unknown',
-          reason: p.appointmentType === 'Examination' ? 'Examination' : 'Consultation',
-          checkInTime: p.appointmentDate
-        })) || [];
-        setPatientsInClinic(formattedPatientsInClinic);
-      } catch (error) {
-        console.error("Polling error", error);
-      }
-    }, 30000); // Poll every 30 seconds
-    return () => clearInterval(interval);
-  }, []);
+    const stored = JSON.parse(localStorage.getItem(PATIENTS_IN_CLINIC_KEY) || "[]");
 
+    // Add mock data if empty for testing
+    if (stored.length === 0) {
+      const mockPatientsInClinic = [
+        {
+          id: 1,
+          appointmentId: 101,
+          name: "Ahmed Mohamed",
+          reason: "Regular Checkup",
+          checkInTime: new Date().toISOString(),
+          doctorId: 1,
+          medicalHistory: [
+            {
+              id: 1,
+              date: "2025-11-20",
+              diagnosis: "Hypertension",
+              prescription: "Amlodipine 5mg daily",
+              notes: "Monitor blood pressure weekly"
+            },
+            {
+              id: 2,
+              date: "2025-10-15",
+              diagnosis: "Common Cold",
+              prescription: "Paracetamol 500mg as needed",
+              notes: "Rest and fluids"
+            }
+          ]
+        },
+        {
+          id: 2,
+          appointmentId: 102,
+          name: "Sara Ali",
+          reason: "Follow-up",
+          checkInTime: new Date(Date.now() - 30 * 60000).toISOString(),
+          doctorId: 1,
+          medicalHistory: [
+            {
+              id: 3,
+              date: "2025-11-15",
+              diagnosis: "Diabetes Type 2",
+              prescription: "Metformin 500mg twice daily",
+              notes: "Follow-up in 2 weeks"
+            }
+          ]
+        },
+        {
+          id: 3,
+          appointmentId: 103,
+          name: "Mohamed Hassan",
+          reason: "Consultation",
+          checkInTime: new Date(Date.now() - 15 * 60000).toISOString(),
+          doctorId: 1,
+          medicalHistory: []
+        }
+      ];
+      localStorage.setItem(PATIENTS_IN_CLINIC_KEY, JSON.stringify(mockPatientsInClinic));
+      setPatientsInClinic(mockPatientsInClinic.filter((p) => p.doctorId === currentDoctorId || !currentDoctorId));
+    } else {
+      setPatientsInClinic(stored.filter((p) => p.doctorId === currentDoctorId || !currentDoctorId));
+    }
+  }, [currentDoctorId]);
 
   const handleAddRecord = () => {
     setNewAppointment({
@@ -185,20 +211,29 @@ export default function DoctorDashboard() {
     }));
   };
 
-  const handleAddFormSubmit = async (e) => {
+  const handleAddFormSubmit = (e) => {
     e.preventDefault();
     if (!newAppointment.time || !newAppointment.patient) return;
 
-    try {
-      // Note: In real app, we need patient ID. Here we might need a search or create flow.
-      // For simplicity in this integration step, we'll assume we can't create new patients here easily without ID.
-      // But to keep UI working, we will alert.
-      alert("To add an appointment, please use the Receptionist Dashboard or ensure Patient ID is available.");
-      // Alternatively, we could implement a quick patient create here if needed.
-      setShowAddForm(false);
-    } catch (error) {
-      console.error("Error adding appointment", error);
-    }
+    const id = Date.now();
+    const status = newAppointment.checkedIn ? "Checked-In" : "Scheduled";
+
+    setTodayAppointments((prev) => [
+      ...prev,
+      {
+        id,
+        time: newAppointment.time,
+        patient: newAppointment.patient,
+        reason:
+          newAppointment.type === "Consultation"
+            ? "Consultation (manual)"
+            : "Examination (manual)",
+        type: newAppointment.type,
+        status
+      }
+    ]);
+
+    setShowAddForm(false);
   };
 
   const handleEditLatest = () => {
@@ -239,81 +274,45 @@ export default function DoctorDashboard() {
     }));
   };
 
-  const handleEditFormSubmit = async (e) => {
+  const handleEditFormSubmit = (e) => {
     e.preventDefault();
-    if (!editingAppointmentId) return;
+    if (!editingAppointmentId || !editAppointment.time || !editAppointment.patient)
+      return;
 
-    try {
-      await doctorService.updateAppointment(editingAppointmentId, {
-        appointmentTime: editAppointment.time,
-        type: editAppointment.type.toUpperCase(),
-        status: editAppointment.checkedIn ? 'CHECKED_IN' : 'CONFIRMED'
-      });
+    const status = editAppointment.checkedIn ? "Checked-In" : "Scheduled";
+    const reason =
+      editAppointment.type === "Consultation"
+        ? "Consultation (manual)"
+        : "Examination (manual)";
 
-      // Refresh list
-      const dashboardData = await doctorService.getDashboard();
-      const formattedAppointments = dashboardData.data?.todayAppointments?.map(appt => ({
-        id: appt.id,
-        time: appt.schedule?.startTime || 'N/A',
-        patient: appt.patient?.person?.fullName || 'Unknown',
-        reason: appt.appointmentType === 'Examination' ? 'Routine examination' : 'Follow-up consultation',
-        type: appt.appointmentType,
-        status: appt.status === 'Confirmed' ? 'Scheduled' : appt.status === 'Completed' ? 'Completed' : appt.status
-      })) || [];
-      setTodayAppointments(formattedAppointments);
+    setTodayAppointments((prev) =>
+      prev.map((appt) =>
+        appt.id === editingAppointmentId
+          ? {
+            ...appt,
+            time: editAppointment.time,
+            patient: editAppointment.patient,
+            type: editAppointment.type,
+            status,
+            reason
+          }
+          : appt
+      )
+    );
 
-      setShowEditForm(false);
-    } catch (error) {
-      alert("Failed to update appointment");
-    }
+    setShowEditForm(false);
   };
 
-  const handleAddSlot = async (e) => {
+  const handleAddSlot = (e) => {
     e.preventDefault();
-    if (!newSlot.startTime || !newSlot.endTime || !newSlot.roomId) {
-        alert("Please fill in all fields including Room");
-        return;
-    }
-
-    try {
-      // Use doctor's own schedule endpoint
-      await doctorService.addSchedule({
-        roomId: Number(newSlot.roomId),
-        weekDay: newSlot.day,
-        startTime: newSlot.startTime,
-        endTime: newSlot.endTime,
-        maxCapacity: newSlot.capacity
-      });
-      
-      alert("Schedule added successfully!");
-
-      // Refresh slots
-      const schedulesData = await doctorService.getMySchedule();
-      const schedules = schedulesData.data || [];
-      const formattedSlots = schedules.map(s => ({
-        id: s.id,
-        day: s.weekDay,
-        time: s.startTime,
-        capacity: s.maxCapacity,
-        roomName: s.room?.roomName || 'N/A'
-      }));
-      setSlots(formattedSlots);
-
-      setNewSlot(prev => ({ ...prev, startTime: "", endTime: "", capacity: 1 }));
-    } catch (error) {
-      console.error("Failed to add slot:", error);
-      alert("Failed to add slot: " + (error.response?.data?.error || error.message));
-    }
+    if (!newSlot.startTime || !newSlot.endTime || !newSlot.roomId) return;
+    const id = Date.now();
+    setSlots((prev) => [...prev, { id, ...newSlot }]);
+    setNewSlot({ ...newSlot, startTime: "", endTime: "", roomId: "" });
   };
 
-  const handleDeleteSlot = async (id) => {
-    if (!window.confirm("Are you sure?")) return;
-    try {
-      await doctorService.deleteSchedule(id);
-      setSlots((prev) => prev.filter((s) => s.id !== id));
-    } catch (error) {
-      alert("Failed to delete slot: " + (error.message || 'Unknown error'));
-    }
+  const handleDeleteSlot = (id) => {
+    setSlots((prev) => prev.filter((s) => s.id !== id));
   };
 
   const handleChangePassword = () => {
@@ -332,8 +331,6 @@ export default function DoctorDashboard() {
     month: "long",
     day: "numeric"
   });
-
-  // Safe access to weeklySchedule
   const todaySchedule = weeklySchedule.find(
     (entry) =>
       entry.day.toLowerCase().startsWith(todayShort.slice(0, 3).toLowerCase())
@@ -344,15 +341,14 @@ export default function DoctorDashboard() {
   ).length;
 
   const getAppointmentsForSchedule = (schedule) => {
-    // This logic filters today's appointments that fall into this schedule slot
-    // Since we only have today's appointments in state, we can only show for today
-    // For future days, we'd need to fetch appointments for that range.
-    // For now, we'll keep it simple and only show for today if the schedule matches today
-
-    const isToday = schedule.day === todayShort;
-    if (!isToday) return [];
+    const dateObj = schedule.dateObj || getDateForDayLabel(schedule.day);
+    const dateKey = dateObj.toISOString().split("T")[0];
 
     return todayAppointments.filter((appt) => {
+      const apptDate =
+        appt.date ||
+        todayDate.toISOString().split("T")[0]; // fallback لو البيانات القديمة
+      if (apptDate !== dateKey) return false;
       if (!appt.time) return false;
       return appt.time >= schedule.start && appt.time <= schedule.end;
     });
@@ -375,8 +371,6 @@ export default function DoctorDashboard() {
         item.dateObj <= maxRangeDate
     )
     .sort((a, b) => a.dateObj - b.dateObj);
-
-  if (loading) return <div className="page"><p>Loading...</p></div>;
 
   return (
     <div className="page">
@@ -457,15 +451,17 @@ export default function DoctorDashboard() {
         <div className="card">
           <h3>Weekly Schedule</h3>
           <ul className="list">
-            {weeklySchedule.length > 0 ? weeklySchedule.map((d, index) => {
-              const label = d.day;
-              // Simple check if this is today
-              const todayDay = new Date().toLocaleString("en-US", { weekday: "short" });
-              const isToday = label === todayDay;
-              
-              // We'll show today's appointments if it matches
-              const slotAppointments = isToday ? todayAppointments : [];
-              const isExpanded = expandedScheduleId === index;
+            {visibleSchedules.map((d) => {
+              const dateObj = d.dateObj;
+              const label = dateObj
+                ? dateObj.toLocaleDateString("en-US", {
+                  weekday: "short",
+                  month: "short",
+                  day: "numeric"
+                })
+                : d.day;
+              const slotAppointments = getAppointmentsForSchedule(d);
+              const isExpanded = expandedScheduleId === d.index;
 
               return (
                 <li
@@ -474,7 +470,7 @@ export default function DoctorDashboard() {
                   style={{ cursor: "pointer", flexDirection: "column", alignItems: "stretch" }}
                   onClick={() =>
                     setExpandedScheduleId((prev) =>
-                      prev === index ? null : index
+                      prev === d.index ? null : d.index
                     )
                   }
                 >
@@ -487,30 +483,29 @@ export default function DoctorDashboard() {
                     }}
                   >
                     <div>
-                      <div className="list-title">
-                        {label} {isToday && <span className="pill pill-success" style={{fontSize: '0.7em', marginLeft: '8px'}}>Today</span>}
-                      </div>
+                      <div className="list-title">{label}</div>
                       <div className="list-subtitle">
                         {d.start} – {d.end} · Max {d.max} slots
                       </div>
                     </div>
-                    {isToday && (
                     <div style={{ textAlign: "right" }}>
                       <div style={{ fontWeight: 600 }}>
                         {slotAppointments.length} patients
                       </div>
+                      <div className="muted" style={{ fontSize: "0.85rem" }}>
+                        Tap to {isExpanded ? "hide" : "view"}
+                      </div>
                     </div>
-                    )}
                   </div>
 
-                  {isToday && isExpanded && (
+                  {isExpanded && (
                     <>
                       {slotAppointments.length === 0 ? (
                         <p
                           className="muted"
                           style={{ marginTop: "0.75rem", fontSize: "0.9rem" }}
                         >
-                          No patients booked yet.
+                          No patients booked in this slot.
                         </p>
                       ) : (
                         <ul
@@ -539,6 +534,23 @@ export default function DoctorDashboard() {
                                     {appt.type} · {appt.reason}
                                   </div>
                                 </div>
+                                <span
+                                  className="pill"
+                                  style={{
+                                    background:
+                                      appt.status === "Checked-In"
+                                        ? "rgba(34, 197, 94, 0.2)"
+                                        : "var(--accent-soft)",
+                                    color:
+                                      appt.status === "Checked-In"
+                                        ? "#22c55e"
+                                        : "#e0edff"
+                                  }}
+                                >
+                                  {appt.status === "Checked-In"
+                                    ? "Checked-In"
+                                    : "Waiting"}
+                                </span>
                               </li>
                             ))}
                         </ul>
@@ -547,9 +559,7 @@ export default function DoctorDashboard() {
                   )}
                 </li>
               );
-            }) : (
-              <p className="muted" style={{padding: '1rem', textAlign: 'center'}}>No weekly schedule set.</p>
-            )}
+            })}
           </ul>
         </div>
       </section>
@@ -568,17 +578,30 @@ export default function DoctorDashboard() {
                     setNewSlot({ ...newSlot, day: e.target.value })
                   }
                 >
-                  <option>Day</option>
-                  <option>Sat</option>
-                  <option>Sun</option>
                   <option>Mon</option>
                   <option>Tue</option>
                   <option>Wed</option>
                   <option>Thu</option>
                   <option>Fri</option>
-
                 </select>
               </label>
+              <label className="field">
+                <span>Room</span>
+                <select
+                  value={newSlot.roomId}
+                  onChange={(e) =>
+                    setNewSlot({ ...newSlot, roomId: Number(e.target.value) })
+                  }
+                  required
+                >
+                  <option value="">Select Room</option>
+                  {rooms.map(room => (
+                    <option key={room.id} value={room.id}>{room.roomName}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <div className="form-grid-2">
               <label className="field">
                 <span>Start Time</span>
                 <input
@@ -601,27 +624,7 @@ export default function DoctorDashboard() {
                   required
                 />
               </label>
-
             </div>
-            
-            <label className="field">
-              <span>Room</span>
-              <select
-                value={newSlot.roomId}
-                onChange={(e) =>
-                  setNewSlot({ ...newSlot, roomId: e.target.value })
-                }
-                required
-              >
-                <option value="" disabled>Select Room</option>
-                {rooms.map(room => (
-                    <option key={room.id} value={room.id}>
-                        {room.roomName}
-                    </option>
-                ))}
-              </select>
-            </label>
-
             <label className="field">
               <span>Max capacity</span>
               <input
@@ -646,9 +649,11 @@ export default function DoctorDashboard() {
             {slots.map((s) => (
               <li key={s.id} className="list-item">
                 <div className="list-title">
-                  {s.day} · {s.time}
+                  {s.day} · {s.startTime} - {s.endTime}
                 </div>
-                <div className="list-subtitle">Room: {s.roomName} · Capacity: {s.capacity}</div>
+                <div className="list-subtitle">
+                  {rooms.find(r => r.id === s.roomId)?.roomName || 'Unknown Room'} · Capacity: {s.capacity}
+                </div>
                 <button
                   type="button"
                   className="pill pill-danger"
@@ -678,25 +683,16 @@ export default function DoctorDashboard() {
                     </div>
                   )}
                 </div>
-                <div style={{ display: "flex", gap: "0.5rem" }}>
+                <div>
                   <button
                     type="button"
                     className="btn-secondary"
-                    onClick={() =>
-                      navigate("/doctor-medical-record", { state: { patient: p } })
-                    }
-                  >
-                    Open Medical Record
-                  </button>
-                  <button
-                    type="button"
-                    className="pill pill-danger"
                     onClick={() => {
-                      // In real app, this would be a "Check Out" API call
-                      alert("Check out functionality to be implemented");
+                      setSelectedPatient(p);
+                      setShowMedicalRecordModal(true);
                     }}
                   >
-                    Remove
+                    Open Records
                   </button>
                 </div>
               </li>
@@ -874,7 +870,10 @@ export default function DoctorDashboard() {
                   <option value="Consultation">Consultation</option>
                 </select>
               </label>
-              <label className="field" style={{ flexDirection: "row", alignItems: "center", gap: "0.5rem" }}>
+              <label
+                className="field"
+                style={{ flexDirection: "row", alignItems: "center", gap: "0.5rem" }}
+              >
                 <input
                   type="checkbox"
                   name="checkedIn"
@@ -884,7 +883,6 @@ export default function DoctorDashboard() {
                 />
                 <span>Marked as checked-in</span>
               </label>
-
               <div style={{ display: "flex", gap: "0.75rem", marginTop: "1.5rem" }}>
                 <button
                   type="button"
@@ -895,13 +893,31 @@ export default function DoctorDashboard() {
                   Cancel
                 </button>
                 <button type="submit" className="btn-primary" style={{ flex: 1 }}>
-                  Update
+                  Save Changes
                 </button>
               </div>
             </form>
           </div>
         </div>
       )}
+
+      {/* Medical Record Editor Modal */}
+      <MedicalRecordEditorModal
+        patient={selectedPatient}
+        isOpen={showMedicalRecordModal}
+        onClose={() => {
+          setShowMedicalRecordModal(false);
+          setSelectedPatient(null);
+        }}
+        onSave={async (newRecord) => {
+          // Backend integration point
+          console.log("Saved medical record:", newRecord);
+          // TODO: Call API endpoint here when backend is ready
+        }}
+      />
     </div>
   );
 }
+
+
+

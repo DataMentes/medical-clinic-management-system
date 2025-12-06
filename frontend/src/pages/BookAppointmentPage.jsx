@@ -1,160 +1,122 @@
-import { useMemo, useState } from "react";
-
-// ثابت للتخصصات الطبية والـ time slots المتاحة لكل تخصص
-const SPECIALTIES = {
-  cardiology: {
-    label: "Cardiology",
-    slots: [
-      { time: "09:00", doctor: "Dr. Sarah Ahmed", type: "examination", price: 500 },
-      { time: "11:30", doctor: "Dr. Omar Khaled", type: "consultation", price: 300 },
-      { time: "14:00", doctor: "Dr. Rana Youssef", type: "examination", price: 500 },
-      { time: "15:30", doctor: "Dr. Sarah Ahmed", type: "consultation", price: 300 }
-    ]
-  },
-  dermatology: {
-    label: "Dermatology",
-    slots: [
-      { time: "10:00", doctor: "Dr. Hana Farouk", type: "examination", price: 450 },
-      { time: "13:00", doctor: "Dr. Karim Nassar", type: "consultation", price: 250 },
-      { time: "16:00", doctor: "Dr. Hana Farouk", type: "consultation", price: 250 }
-    ]
-  },
-  pediatrics: {
-    label: "Pediatrics",
-    slots: [
-      { time: "09:30", doctor: "Dr. Maya Adel", type: "examination", price: 400 },
-      { time: "12:30", doctor: "Dr. Ahmed Samir", type: "consultation", price: 280 },
-      { time: "14:30", doctor: "Dr. Maya Adel", type: "consultation", price: 280 }
-    ]
-  }
-};
-
-const UPCOMING_KEY = "patientUpcomingAppointments";
-const DOCTOR_APPOINTMENTS_KEY = "doctorAppointments";
+import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import { getSpecialties, getAvailableDoctors, bookAppointment } from "../api/patient.api.js";
 
 export default function BookAppointmentPage() {
-  const [specialty, setSpecialty] = useState("");
-  const [appointmentType, setAppointmentType] = useState("examination");
-  const [appointmentDate, setAppointmentDate] = useState("");
+  const navigate = useNavigate();
+  const today = new Date().toISOString().split("T")[0];
+  
+  const [specialties, setSpecialties] = useState([]);
+  const [selectedSpecialty, setSelectedSpecialty] = useState("");
+  const [appointmentType, setAppointmentType] = useState("Examination");
+  const [appointmentDate, setAppointmentDate] = useState(today);
+  const [availableDoctors, setAvailableDoctors] = useState([]);
+  const [selectedDoctor, setSelectedDoctor] = useState(null);
   const [selectedSlot, setSelectedSlot] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
-  const today = useMemo(() => new Date().toISOString().split("T")[0], []);
+  useEffect(() => {
+    const fetchSpecialties = async () => {
+      try {
+        const response = await getSpecialties();
+        if (response.success && response.data) {
+          setSpecialties(response.data);
+        }
+      } catch (err) {
+        console.error('Error loading specialties:', err);
+        setError("Failed to load specialties");
+      }
+    };
 
-  // فلترة الـ slots بناءً على الـ appointment type المختار
-  const availableSlots =
-    specialty && appointmentDate
-      ? SPECIALTIES[specialty].slots.filter(
-          (slot) => slot.type === appointmentType
-        )
-      : [];
+    fetchSpecialties();
+  }, []);
 
-  // دالة لإرسال email confirmation للمريض
-  const sendEmailConfirmation = (appointmentDetails) => {
-    // في التطبيق الحقيقي، هنا هيكون API call لإرسال email
-    // لكن في الـ demo، هنحاكي الإرسال
-    const emailContent = `
-Appointment Confirmation
+  useEffect(() => {
+    const fetchDoctors = async () => {
+      if (!selectedSpecialty || !appointmentDate) {
+        setAvailableDoctors([]);
+        return;
+      }
 
-Dear Patient,
+      try {
+        setLoading(true);
+        setError("");
+        const response = await getAvailableDoctors(selectedSpecialty, appointmentDate);
+        
+        if (response.success && response.data) {
+          setAvailableDoctors(response.data);
+        }
+      } catch (err) {
+        console.error('Error loading doctors:', err);
+        setError(err.message || "Failed to load available doctors");
+        setAvailableDoctors([]);
+      } finally {
+        setLoading(false);
+      }
+    };
 
-Your appointment has been successfully booked!
+    fetchDoctors();
+  }, [selectedSpecialty, appointmentDate]);
 
-Appointment Details:
-- Doctor: ${appointmentDetails.doctor}
-- Specialty: ${appointmentDetails.specialty}
-- Type: ${appointmentDetails.type}
-- Date: ${appointmentDetails.date}
-- Time: ${appointmentDetails.time}
-- Price: ${appointmentDetails.price} EGP
-- Status: ${appointmentDetails.status}
-
-Please arrive 10 minutes before your scheduled time.
-
-Thank you for choosing CarePoint Clinic.
-    `;
-
-    // محاكاة إرسال email (في التطبيق الحقيقي هيكون API call)
-    console.log("Email sent to patient:", emailContent);
-    
-    // يمكنك أيضاً حفظ الـ email في localStorage للـ demo
-    const emailKey = "patientEmailNotifications";
-    const existingEmails = JSON.parse(localStorage.getItem(emailKey) || "[]");
-    existingEmails.push({
-      timestamp: new Date().toISOString(),
-      subject: "Appointment Confirmation",
-      content: emailContent,
-      appointmentId: appointmentDetails.id
-    });
-    localStorage.setItem(emailKey, JSON.stringify(existingEmails));
-  };
-
-  const handleBookSubmit = (e) => {
+  const handleBookSubmit = async (e) => {
     e.preventDefault();
-    if (!specialty || !appointmentDate || !selectedSlot) return;
+    
+    if (!selectedSpecialty || !appointmentDate || !selectedDoctor || !selectedSlot) {
+      setError("Please select an appointment slot");
+      return;
+    }
 
-    const typeLabel =
-      appointmentType === "examination" ? "Examination" : "Consultation";
+    try {
+      setLoading(true);
+      setError("");
 
-    const appointmentId = Date.now();
-    const newAppointment = {
-      id: appointmentId,
-      date: `${appointmentDate} · ${selectedSlot.time}`,
-      doctor: selectedSlot.doctor,
-      type: typeLabel,
-      status: "Confirmed",
-      specialty: SPECIALTIES[specialty].label,
-      price: selectedSlot.price
-    };
+      const response = await bookAppointment({
+        doctorId: selectedDoctor.doctorId,
+        scheduleId: selectedSlot.scheduleId,
+        appointmentDate: appointmentDate,
+        appointmentType: appointmentType
+      });
 
-    // قراءة المواعيد الحالية من localStorage (لو فيه)
-    const existing =
-      JSON.parse(localStorage.getItem(UPCOMING_KEY) || "null") || [];
-    const updated = [...existing, newAppointment];
-
-    localStorage.setItem(UPCOMING_KEY, JSON.stringify(updated));
-
-    // حفظ الموعد عند الدكتور أيضاً
-    const doctorAppointment = {
-      id: appointmentId,
-      date: appointmentDate,
-      time: selectedSlot.time,
-      patient: "Online patient",
-      doctor: selectedSlot.doctor,
-      reason: `${typeLabel} · ${SPECIALTIES[specialty].label}`
-    };
-
-    const doctorExisting =
-      JSON.parse(localStorage.getItem(DOCTOR_APPOINTMENTS_KEY) || "null") ||
-      [];
-    const doctorUpdated = [...doctorExisting, doctorAppointment];
-    localStorage.setItem(
-      DOCTOR_APPOINTMENTS_KEY,
-      JSON.stringify(doctorUpdated)
-    );
-
-    // إرسال email confirmation للمريض
-    sendEmailConfirmation({
-      id: appointmentId,
-      doctor: selectedSlot.doctor,
-      specialty: SPECIALTIES[specialty].label,
-      type: typeLabel,
-      date: appointmentDate,
-      time: selectedSlot.time,
-      price: selectedSlot.price,
-      status: "Confirmed"
-    });
-
-    alert(
-      `Appointment has been booked successfully!\n\n` +
-      `A confirmation email has been sent to your email address with the appointment details.`
-    );
-
-    // reset form
-    setSpecialty("");
-    setAppointmentType("examination");
-    setAppointmentDate("");
-    setSelectedSlot(null);
+      if (response.success) {
+        alert("Appointment booked successfully!");
+        navigate("/patient-dashboard");
+      }
+    } catch (err) {
+      setError(err.message || "Failed to book appointment");
+    } finally {
+      setLoading(false);
+    }
   };
+
+  const getSpecialtyName = (specialty) => {
+    if (!specialty) return 'N/A';
+    return typeof specialty === 'object' ? specialty.name : specialty;
+  };
+
+  const getDayName = (dateString) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  };
+
+  // Calculate appointments - using new backend format
+  const allAppointments = availableDoctors.flatMap((doctor) => {
+    const slots = doctor.availableSlots || [];
+    
+    console.log('👨‍⚕️ Doctor:', doctor.fullName, 'Slots:', slots);
+    
+    return slots
+      .filter(slot => {
+        console.log('  🕐 Slot:', slot.time, 'Available:', slot.available);
+        return slot.available;
+      })
+      .map((slot) => ({
+        doctor,
+        slot
+      }));
+  });
+  
+  console.log('📋 Total appointments:', allAppointments.length);
 
   return (
     <div className="page">
@@ -165,27 +127,39 @@ Thank you for choosing CarePoint Clinic.
 
       <div className="card">
         <form className="form" onSubmit={handleBookSubmit}>
-          {/* التخصصات الطبية */}
+          {error && (
+            <div style={{
+              padding: "0.75rem",
+              backgroundColor: "rgba(239, 68, 68, 0.1)",
+              border: "1px solid rgba(239, 68, 68, 0.3)",
+              borderRadius: "var(--radius-md)",
+              color: "#dc2626",
+              marginBottom: "1rem"
+            }}>
+              {error}
+            </div>
+          )}
+
           <label className="field">
             <span>Medical specialty</span>
             <select
-              value={specialty}
+              value={selectedSpecialty}
               onChange={(e) => {
-                setSpecialty(e.target.value);
+                setSelectedSpecialty(e.target.value);
+                setSelectedDoctor(null);
                 setSelectedSlot(null);
               }}
               required
             >
               <option value="">Select specialty...</option>
-              {Object.entries(SPECIALTIES).map(([key, value]) => (
-                <option key={key} value={key}>
-                  {value.label}
+              {specialties.map((spec) => (
+                <option key={spec.id} value={spec.id}>
+                  {spec.name}
                 </option>
               ))}
             </select>
           </label>
 
-          {/* نوع الـ appointment */}
           <div className="field">
             <span>Appointment type</span>
             <div className="radio-group">
@@ -193,11 +167,12 @@ Thank you for choosing CarePoint Clinic.
                 <input
                   type="radio"
                   name="appointment-type"
-                  value="examination"
-                  checked={appointmentType === "examination"}
+                  value="Examination"
+                  checked={appointmentType === "Examination"}
                   onChange={(e) => {
                     setAppointmentType(e.target.value);
-                    setSelectedSlot(null); // reset الـ slot المختار عند تغيير النوع
+                    setSelectedDoctor(null);
+                    setSelectedSlot(null);
                   }}
                 />
                 Examination
@@ -206,11 +181,12 @@ Thank you for choosing CarePoint Clinic.
                 <input
                   type="radio"
                   name="appointment-type"
-                  value="consultation"
-                  checked={appointmentType === "consultation"}
+                  value="Consultation"
+                  checked={appointmentType === "Consultation"}
                   onChange={(e) => {
                     setAppointmentType(e.target.value);
-                    setSelectedSlot(null); // reset الـ slot المختار عند تغيير النوع
+                    setSelectedDoctor(null);
+                    setSelectedSlot(null);
                   }}
                 />
                 Consultation
@@ -218,7 +194,6 @@ Thank you for choosing CarePoint Clinic.
             </div>
           </div>
 
-          {/* التاريخ */}
           <label className="field">
             <span>Select date</span>
             <input
@@ -227,67 +202,84 @@ Thank you for choosing CarePoint Clinic.
               value={appointmentDate}
               onChange={(e) => {
                 setAppointmentDate(e.target.value);
+                setSelectedDoctor(null);
                 setSelectedSlot(null);
               }}
               required
             />
           </label>
 
-          {/* الـ time slots المتاحة */}
-          {specialty && appointmentDate && (
+          {selectedSpecialty && appointmentDate && (
             <div className="field">
-              <span>Available time slots</span>
-              <div className="list">
-                {availableSlots.map((slot) => {
-                  const isSelected =
-                    selectedSlot &&
-                    selectedSlot.time === slot.time &&
-                    selectedSlot.doctor === slot.doctor;
-                  return (
-                    <div
-                      key={`${slot.time}-${slot.doctor}`}
-                      className={
-                        "list-item clickable" +
-                        (isSelected ? " list-item-selected" : "")
-                      }
-                    >
-                      <div>
-                        <div className="list-title">
-                          {slot.doctor}
-                        </div>
-                        <div className="list-subtitle">
-                          Time: {slot.time} · {slot.price} EGP
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        className="btn-secondary"
-                        onClick={() => setSelectedSlot(slot)}
+              <span>Available appointments</span>
+              {loading ? (
+                <div style={{ textAlign: "center", padding: "1rem", color: "var(--text-soft)" }}>
+                  Loading available appointments...
+                </div>
+              ) : allAppointments.length > 0 ? (
+                <div className="list">
+                  {allAppointments.map(({ doctor, slot }) => {
+                    const isSelected = 
+                      selectedSlot?.scheduleId === slot.scheduleId && 
+                      selectedDoctor?.doctorId === doctor.doctorId;
+                    
+                    const fee = appointmentType === "Examination" ? doctor.examinationFee : doctor.consultationFee;
+                    
+                    return (
+                      <div 
+                        key={`${doctor.doctorId}-${slot.scheduleId}`}
+                        className={"list-item clickable" + (isSelected ? " list-item-selected" : "")}
+                        onClick={() => {
+                          setSelectedDoctor(doctor);
+                          setSelectedSlot(slot);
+                        }}
+                        style={{ cursor: "pointer" }}
                       >
-                        Appointment
-                      </button>
-                    </div>
-                  );
-                })}
-                {availableSlots.length === 0 && (
-                  <div className="list-empty">
-                    No available slots for this specialty.
-                  </div>
-                )}
-              </div>
+                        <div style={{ flex: 1 }}>
+                          <div className="list-title">
+                            {doctor.fullName} · {getSpecialtyName(doctor.specialty)}
+                          </div>
+                          <div className="list-subtitle">
+                            📅 {getDayName(appointmentDate)}
+                          </div>
+                          <div className="list-subtitle">
+                            🕐 {slot.time} · {appointmentType} · {fee} EGP
+                          </div>
+                          <div style={{ fontSize: "0.8rem", opacity: 0.7, marginTop: "0.25rem" }}>
+                            Slots: {slot.maxCapacity - slot.bookedCount} available ({slot.bookedCount}/{slot.maxCapacity} booked)
+                          </div>
+                        </div>
+                        {isSelected && (
+                          <span style={{ 
+                            color: "var(--primary)", 
+                            fontWeight: "600",
+                            fontSize: "1.5rem",
+                            lineHeight: "1"
+                          }}>
+                            ✓
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="list-empty">
+                  No available appointments for this specialty and date.
+                </div>
+              )}
             </div>
           )}
 
           <button
             type="submit"
             className="btn-primary"
-            disabled={!specialty || !appointmentDate || !selectedSlot}
+            disabled={!selectedSpecialty || !appointmentDate || !selectedDoctor || !selectedSlot || loading}
           >
-            Confirm appointment
+            {loading ? "Booking..." : "Confirm Booking"}
           </button>
         </form>
       </div>
     </div>
   );
 }
-

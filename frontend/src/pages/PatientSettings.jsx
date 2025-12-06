@@ -1,47 +1,36 @@
 import { useState, useEffect } from "react";
-import { authService } from "../api/authService";
-import { patientService } from "../api/patientService";
+
+const PATIENT_DATA_KEY = "patientUserData";
 
 export default function PatientSettings() {
   const [formData, setFormData] = useState({
     phone: "",
     email: "",
     password: "",
-    fullName: ""
+    currentPassword: ""
   });
-  const [patientId, setPatientId] = useState(null);
   const [saving, setSaving] = useState(false);
-  const [loading, setLoading] = useState(true);
   const [showOTPModal, setShowOTPModal] = useState(false);
   const [otp, setOtp] = useState("");
   const [originalEmail, setOriginalEmail] = useState("");
   const [resendingOTP, setResendingOTP] = useState(false);
   const [pendingFormData, setPendingFormData] = useState(null);
 
+  // قراءة البيانات الحالية من localStorage عند تحميل الصفحة
   useEffect(() => {
-    fetchUserData();
-  }, []);
-
-  const fetchUserData = async () => {
-    try {
-      setLoading(true);
-      const user = await authService.getCurrentUser();
-      if (user && user.patient) {
-        setPatientId(user.patient.id);
-        setFormData(prev => ({
-          ...prev,
-          phone: user.phone || "",
-          email: user.email || "",
-          fullName: user.fullName || ""
-        }));
-        setOriginalEmail(user.email);
-      }
-    } catch (error) {
-      console.error("Failed to fetch user data:", error);
-    } finally {
-      setLoading(false);
+    const savedData = JSON.parse(
+      localStorage.getItem(PATIENT_DATA_KEY) || "null"
+    );
+    if (savedData) {
+      const email = savedData.email || "";
+      setFormData((prev) => ({
+        ...prev,
+        phone: savedData.phone || "",
+        email: email
+      }));
+      setOriginalEmail(email);
     }
-  };
+  }, []);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -51,103 +40,117 @@ export default function PatientSettings() {
     }));
   };
 
-  const sendOTPForEmail = async (email) => {
-    try {
-      await patientService.requestEmailUpdateOTP(email);
-      alert(`OTP has been sent to ${email}`);
-    } catch (error) {
-      console.error("Failed to send OTP:", error);
-      alert(error.message || "Failed to send OTP");
-    }
+  // إرسال OTP إلى الإيميل الجديد
+  const sendOTP = (email) => {
+    // في التطبيق الحقيقي، هنا هيكون API call لإرسال OTP
+    // محاكاة إرسال OTP
+    console.log(`OTP sent to ${email}`);
+    // في التطبيق الحقيقي: await api.sendOTP(email);
+    alert(`OTP has been sent to ${email}`);
   };
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = (e) => {
     e.preventDefault();
-
+    
+    // التحقق إذا كان الإيميل تغير
     const emailChanged = formData.email && formData.email !== originalEmail;
-
+    
     if (emailChanged) {
+      // حفظ البيانات المؤقتة لإكمال الحفظ بعد التحقق من OTP
       setPendingFormData(formData);
-      await sendOTPForEmail(formData.email);
+      // إرسال OTP إلى الإيميل الجديد
+      sendOTP(formData.email);
+      // عرض نافذة OTP
       setShowOTPModal(true);
     } else {
-      performSave(formData);
+      // لو الإيميل ما تغيرش، نحفظ مباشرة
+      performSave();
     }
   };
 
-  const performSave = async (dataToSave) => {
-    if (!patientId) return;
+  const performSave = () => {
     setSaving(true);
 
-    try {
-      // Update phone if changed
-      if (dataToSave.phone) {
-        await patientService.updatePhone(dataToSave.phone);
+    // محاكاة عملية الحفظ (في التطبيق الحقيقي هيكون API call)
+    setTimeout(() => {
+      const dataToSave = {
+        phone: formData.phone,
+        email: formData.email,
+        updatedAt: new Date().toISOString()
+      };
+
+      // لو فيه password جديد، نحفظه (في التطبيق الحقيقي هيكون encrypted)
+      if (formData.password) {
+        dataToSave.password = formData.password; // في التطبيق الحقيقي: hashed password
       }
 
-      // Update password if provided
-      if (dataToSave.password) {
-        await patientService.updatePassword(dataToSave.password, dataToSave.password);
-      }
+      localStorage.setItem(PATIENT_DATA_KEY, JSON.stringify(dataToSave));
 
+      setSaving(false);
       alert("Settings updated successfully!");
-      setOriginalEmail(dataToSave.email);
-
+      
+      // تحديث الإيميل الأصلي
+      setOriginalEmail(formData.email);
+      
+      // reset password fields بعد الحفظ
       setFormData((prev) => ({
         ...prev,
-        password: ""
+        password: "",
+        currentPassword: ""
       }));
-
-    } catch (error) {
-      console.error("Failed to update settings:", error);
-      alert("Failed to update settings: " + (error.message || "Unknown error"));
-    } finally {
-      setSaving(false);
-    }
+    }, 500);
   };
 
-  const handleOTPVerify = async (e) => {
+  const handleOTPVerify = (e) => {
     e.preventDefault();
-
+    
     if (!otp || otp.length !== 6) {
       alert("Please enter a valid 6-digit OTP");
       return;
     }
 
-    try {
-      await patientService.updateEmail(pendingFormData.email, otp);
-      await performSave(pendingFormData);
+    // في التطبيق الحقيقي، هنا هيكون API call للتحقق من OTP
+    // محاكاة التحقق من OTP
+    // if (await api.verifyOTP(formData.email, otp)) {
+    //   performSave();
+    //   setShowOTPModal(false);
+    //   setOtp("");
+    // } else {
+    //   alert("Invalid OTP. Please try again.");
+    // }
+    
+    // للـ demo، نحاكي التحقق الناجح
+    setTimeout(() => {
+      performSave();
       setShowOTPModal(false);
       setOtp("");
       setPendingFormData(null);
-    } catch (error) {
-      console.error("OTP Verification failed:", error);
-      alert(error.message || "Invalid OTP");
-    }
+    }, 500);
   };
 
-  const handleResendOTP = async () => {
-    if (!pendingFormData?.email) return;
-
+  const handleResendOTP = () => {
+    if (!formData.email) return;
+    
     setResendingOTP(true);
-    try {
-      await sendOTPForEmail(pendingFormData.email);
-    } finally {
+    // في التطبيق الحقيقي: await api.resendOTP(formData.email);
+    setTimeout(() => {
+      sendOTP(formData.email);
       setResendingOTP(false);
-    }
+    }, 500);
   };
 
   const handleCancelOTP = () => {
     setShowOTPModal(false);
     setOtp("");
     setPendingFormData(null);
-    setFormData((prev) => ({
-      ...prev,
-      email: originalEmail
-    }));
+    // إرجاع الإيميل إلى القيمة الأصلية
+    if (pendingFormData) {
+      setFormData((prev) => ({
+        ...prev,
+        email: originalEmail
+      }));
+    }
   };
-
-  if (loading) return <div className="page"><p>Loading settings...</p></div>;
 
   return (
     <div className="page">
@@ -160,17 +163,7 @@ export default function PatientSettings() {
         <form className="form" onSubmit={handleSubmit}>
           <h3>Account Information</h3>
 
-          <label className="field">
-            <span>Full Name</span>
-            <input
-              type="text"
-              name="fullName"
-              value={formData.fullName}
-              onChange={handleChange}
-              placeholder="Full Name"
-            />
-          </label>
-
+          {/* رقم الموبايل */}
           <label className="field">
             <span>Phone Number</span>
             <input
@@ -182,6 +175,7 @@ export default function PatientSettings() {
             />
           </label>
 
+          {/* الإيميل */}
           <label className="field">
             <span>Email</span>
             <input
@@ -194,8 +188,19 @@ export default function PatientSettings() {
             />
           </label>
 
-          <h3 style={{ marginTop: "1.5rem" }}>Change Password</h3>
+          {/* الباسورد الحالي (للتأكيد عند تغيير الباسورد) */}
+          <label className="field">
+            <span>Current Password</span>
+            <input
+              type="password"
+              name="currentPassword"
+              value={formData.currentPassword}
+              onChange={handleChange}
+              placeholder="Enter current password to change password"
+            />
+          </label>
 
+          {/* الباسورد الجديد */}
           <label className="field">
             <span>New Password</span>
             <input
@@ -255,7 +260,7 @@ export default function PatientSettings() {
             <form className="form" onSubmit={handleOTPVerify}>
               <h2>Verify Email Change</h2>
               <p className="form-subtitle" style={{ marginBottom: "1.5rem" }}>
-                Please enter the OTP sent to <strong>{pendingFormData?.email}</strong> to confirm your email change.
+                Please enter the OTP sent to <strong>{formData.email}</strong> to confirm your email change.
               </p>
               <label className="field">
                 <span>OTP</span>
@@ -312,3 +317,4 @@ export default function PatientSettings() {
     </div>
   );
 }
+

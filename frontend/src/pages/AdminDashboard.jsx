@@ -1,34 +1,18 @@
 import { useNavigate } from "react-router-dom";
-import { useState, useEffect } from "react";
+import PageHeader from "../components/PageHeader.jsx";
 import StatCard from "../components/StatCard.jsx";
-import { adminService } from "../api/adminService";
+import NavigationGrid from "../components/NavigationGrid.jsx";
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
-  const [stats, setStats] = useState({
-    totalPatients: 0,
-    totalDoctors: 0,
-    totalAppointments: 0,
-    totalSpecialties: 0
-  });
-  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const fetchStats = async () => {
-      try {
-        const response = await adminService.getStats();
-        // Backend returns: {success: true, data: {totalPatients, ...}}
-        // adminService.getStats() returns result.data which is {success: true, data: {...}}
-        setStats(response.data || response);
-      } catch (error) {
-        console.error('Failed to fetch stats:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchStats();
-  }, []);
+  // Mock data - من API في التطبيق الحقيقي
+  const stats = {
+    totalPatients: 1247,
+    totalDoctors: 24,
+    totalAppointments: 3421,
+    totalSpecialties: 12
+  };
 
   const navigationItems = [
     { path: "/admin-manage-admins", label: "Manage Admins", icon: "👥" },
@@ -44,10 +28,10 @@ export default function AdminDashboard() {
 
   return (
     <div className="page">
-      <header className="page-header">
-        <h1>Admin Dashboard</h1>
-        <p>Overview of system statistics and management options.</p>
-      </header>
+      <PageHeader
+        title="Admin Dashboard"
+        description="Overview of system statistics and management options."
+      />
 
       {/* Summary Boxes */}
       <section className="grid-4" style={{ marginBottom: "2rem" }}>
@@ -68,27 +52,10 @@ export default function AdminDashboard() {
         >
           Management
         </h3>
-        <div className="admin-management-grid">
-          {navigationItems.map((item) => (
-            <button
-              key={item.path}
-              onClick={() => navigate(item.path)}
-              className="btn-primary admin-management-card"
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                gap: "0.5rem",
-                padding: "1.1rem 0.8rem",
-                minHeight: "95px",
-                fontSize: "0.95rem"
-              }}
-            >
-              <span style={{ fontSize: "2rem" }}>{item.icon}</span>
-              <span>{item.label}</span>
-            </button>
-          ))}
-        </div>
+        <NavigationGrid
+          items={navigationItems}
+          onNavigate={(path) => navigate(path)}
+        />
       </div>
     </div>
   );

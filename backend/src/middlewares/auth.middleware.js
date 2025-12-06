@@ -1,6 +1,15 @@
 const jwt = require('jsonwebtoken');
 
 class AuthMiddleware {
+  constructor() {
+    // Bind methods to preserve 'this' context when used as middleware
+    this.authenticate = this.authenticate.bind(this);
+    this.isAdmin = this.isAdmin.bind(this);
+    this.isDoctor = this.isDoctor.bind(this);
+    this.isReceptionist = this.isReceptionist.bind(this);
+    this.isPatient = this.isPatient.bind(this);
+  }
+
   /**
    * Authenticate user from JWT token
    * Adds user info to req.user
@@ -19,8 +28,18 @@ class AuthMiddleware {
 
       const token = authHeader.split(' ')[1];
 
+      // ✅ SECURITY: No fallback secret - fail if missing
+      const secret = process.env.JWT_SECRET;
+      if (!secret) {
+        console.error('CRITICAL: JWT_SECRET environment variable is not set');
+        return res.status(500).json({
+          success: false,
+          error: 'Server configuration error'
+        });
+      }
+
       // Verify token
-      const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
+      const decoded = jwt.verify(token, secret);
       
       // Attach user to request
       req.user = decoded;
@@ -76,84 +95,28 @@ class AuthMiddleware {
    * Check if user is admin
    */
   isAdmin(req, res, next) {
-    if (!req.user) {
-      return res.status(401).json({
-        success: false,
-        error: 'Authentication required'
-      });
-    }
-
-    if (req.user.role !== 'Admin') {
-      return res.status(403).json({
-        success: false,
-        error: 'Admin access required'
-      });
-    }
-
-    next();
+    return this.hasRole('Admin')(req, res, next);
   }
 
   /**
    * Check if user is doctor
    */
   isDoctor(req, res, next) {
-    if (!req.user) {
-      return res.status(401).json({
-        success: false,
-        error: 'Authentication required'
-      });
-    }
-
-    if (req.user.role !== 'Doctor') {
-      return res.status(403).json({
-        success: false,
-        error: 'Doctor access required'
-      });
-    }
-
-    next();
+    return this.hasRole('Doctor')(req, res, next);
   }
 
   /**
    * Check if user is receptionist
    */
   isReceptionist(req, res, next) {
-    if (!req.user) {
-      return res.status(401).json({
-        success: false,
-        error: 'Authentication required'
-      });
-    }
-
-    if (req.user.role !== 'Receptionist') {
-      return res.status(403).json({
-        success: false,
-        error: 'Receptionist access required'
-      });
-    }
-
-    next();
+    return this.hasRole('Receptionist')(req, res, next);
   }
 
   /**
    * Check if user is patient
    */
   isPatient(req, res, next) {
-    if (!req.user) {
-      return res.status(401).json({
-        success: false,
-        error: 'Authentication required'
-      });
-    }
-
-    if (req.user.role !== 'Patient') {
-      return res.status(403).json({
-        success: false,
-        error: 'Patient access required'
-      });
-    }
-
-    next();
+    return this.hasRole('Patient')(req, res, next);
   }
 }
 

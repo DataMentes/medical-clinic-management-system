@@ -1,186 +1,193 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { patientService } from "../api/patientService";
+import { getUpcomingAppointments, getPastAppointments, cancelAppointment } from "../api/patient.api.js";
 
 export default function PatientDashboard() {
   const navigate = useNavigate();
   const [upcomingAppointments, setUpcomingAppointments] = useState([]);
   const [pastAppointments, setPastAppointments] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
+  // تحميل المواعيد من API
   useEffect(() => {
-    const fetchDashboardData = async () => {
+    const fetchAppointments = async () => {
       try {
-        const [dashboardData, pastData] = await Promise.all([
-            patientService.getDashboard(),
-            patientService.getPastAppointments()
+        setLoading(true);
+        setError("");
+
+        // جلب upcoming و past appointments معاً
+        const [upcomingRes, pastRes] = await Promise.all([
+          getUpcomingAppointments(),
+          getPastAppointments()
         ]);
 
-        // Format upcoming appointments
-        if (dashboardData && dashboardData.upcomingAppointments) {
-            const upcoming = dashboardData.upcomingAppointments.map(appt => ({
-            id: appt.id,
-            date: new Date(appt.appointmentDate).toLocaleDateString('en-US', {
-                year: 'numeric',
-                month: 'short',
-                day: 'numeric'
-            }) + ' · ' + (appt.schedule?.startTime ? new Date(appt.schedule.startTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : appt.appointmentTime || 'N/A'),
-            doctor: appt.doctor?.person?.fullName || 'Unknown Doctor',
-            specialty: appt.doctor?.specialty?.name || 'General',
-            type: appt.appointmentType,
-            status: appt.status // Status is already Title Case from Enum (Pending, Confirmed)
-            }));
-            setUpcomingAppointments(upcoming);
+        console.log('✅ Appointments loaded successfully');
+
+        if (upcomingRes.success && upcomingRes.data) {
+          setUpcomingAppointments(upcomingRes.data);
         }
 
-        // Format past appointments
-        if (pastData && Array.isArray(pastData)) {
-            const past = pastData.map(appt => ({
-            id: appt.id,
-            date: new Date(appt.appointmentDate).toLocaleDateString('en-US', {
-                year: 'numeric',
-                month: 'short',
-                day: 'numeric'
-            }),
-            doctor: appt.doctor?.person?.fullName || 'Unknown Doctor',
-            specialty: appt.doctor?.specialty?.name || 'General',
-            type: appt.appointmentType,
-            status: appt.status,
-            notes: appt.medicalRecord?.length > 0 ? appt.medicalRecord[0].diagnosis : (appt.notes || 'No notes available')
-            }));
-            setPastAppointments(past);
+        if (pastRes.success && pastRes.data) {
+          setPastAppointments(pastRes.data);
         }
-
-      } catch (error) {
-        console.error('Failed to fetch patient dashboard:', error);
+      } catch (err) {
+        console.error('❌ Error loading appointments:', err);
+        setError(err.message || "Failed to load appointments");
       } finally {
         setLoading(false);
       }
     };
 
-    fetchDashboardData();
+    fetchAppointments();
   }, []);
 
   const handleCancel = async (id) => {
-    if (!window.confirm('Are you sure you want to cancel this appointment?')) return;
+    if (!confirm("Are you sure you want to cancel this appointment?")) {
+      return;
+    }
 
     try {
-      await patientService.cancelAppointment(id);
-      setUpcomingAppointments(prev => prev.filter(appt => appt.id !== id));
-      alert('Appointment cancelled successfully');
-    } catch (error) {
-      console.error('Failed to cancel appointment:', error);
-      alert(error.message || 'Failed to cancel appointment. Please try again.');
+      const response = await cancelAppointment(id);
+      
+      if (response.success) {
+        // تحديث القائمة بعد الإلغاء
+        setUpcomingAppointments(prev => prev.filter(appt => appt.id !== id));
+        alert("Appointment cancelled successfully");
+      }
+    } catch (err) {
+      alert(err.message || "Failed to cancel appointment");
     }
   };
 
-  if (loading) {
-    return (
-      <div className="page patient-dashboard">
-        <header className="page-header">
-          <h1>Patient Dashboard</h1>
-          <p>Loading...</p>
-        </header>
-      </div>
-    );
-  }
+  // Helper function to format date and time
+  const formatDateTime = (dateString, time) => {
+    const date = new Date(dateString);
+    const formattedDate = date.toLocaleDateString('en-GB', { 
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric'
+    });
+    
+    // Extract time from ISO timestamp or time string
+    let formattedTime = 'Time TBD';
+    if (time) {
+      if (time.includes('T')) {
+        // ISO timestamp like "1970-01-01T09:00:00.000Z"
+        const timeDate = new Date(time);
+        formattedTime = timeDate.toLocaleTimeString('en-US', { 
+          hour: '2-digit', 
+          minute: '2-digit',
+          hour12: true 
+        });
+      } else {
+        // Time string like "09:00:00"
+        const [hours, minutes] = time.split(':');
+        const hour = parseInt(hours);
+        const ampm = hour >= 12 ? 'PM' : 'AM';
+        const hour12 = hour % 12 || 12;
+        formattedTime = `${hour12}:${minutes} ${ampm}`;
+      }
+    }
+    
+    return `${formattedDate} - ${formattedTime}`;
+  };
 
   return (
     <div className="page patient-dashboard">
       <header className="page-header">
-        <h1>Patient Dashboard</h1>
-        <p>Keep track of upcoming visits and past appointments.</p>
+        <div>
+          <h1>Patient Dashboard</h1>
+          <p>Keep track of upcoming visits and past appointments.</p>
+        </div>
+        <div style={{ display: 'flex', gap: '0.75rem', alignSelf: 'flex-start' }}>
+          <button
+            className="btn-primary"
+            onClick={() => navigate('/book-appointment')}
+          >
+            📅 Book Appointment
+          </button>
+          <button
+            className="btn-primary"
+            onClick={() => navigate('/medical-history')}
+          >
+            🩺 Medical History
+          </button>
+        </div>
       </header>
 
-      <section className="grid-2">
-        {/* Card 1: Upcoming Appointments */}
-        <div className="card">
-          <h3>Upcoming Appointments</h3>
-          <ul className="list">
-            {upcomingAppointments.map((appt) => (
-              <li key={appt.id} className="list-item">
-                <div className="list-title">{appt.date}</div>
-                <div className="list-subtitle">
-                  {appt.doctor} · {appt.specialty} · {appt.type}
-                </div>
-                <div className="badge" style={{ 
-                  backgroundColor: appt.status === 'Confirmed' ? '#dcfce7' : '#fef9c3', 
-                  color: appt.status === 'Confirmed' ? '#166534' : '#854d0e',
-                  display: 'inline-block', padding: '0.2rem 0.5rem', borderRadius: '4px', fontSize: '0.8rem', marginTop: '0.25rem'
-                }}>
-                  {appt.status}
-                </div>
-                {appt.status !== 'Confirmed' && appt.status !== 'Completed' && (
+      {error && (
+        <div style={{
+          padding: "1rem",
+          backgroundColor: "rgba(239, 68, 68, 0.1)",
+          border: "1px solid rgba(239, 68, 68, 0.3)",
+          borderRadius: "var(--radius-md)",
+          color: "#dc2626",
+          marginBottom: "1rem"
+        }}>
+          {error}
+        </div>
+      )}
+
+      {loading ? (
+        <div style={{ textAlign: "center", padding: "2rem", color: "var(--text-soft)" }}>
+          Loading appointments...
+        </div>
+      ) : (
+        <section className="grid-2">
+          <div className="card">
+            <h3>Upcoming Appointments</h3>
+            <ul className="list">
+              {upcomingAppointments.map((appt) => (
+                <li key={appt.id} className="list-item">
+                  <div className="list-title">
+                    {formatDateTime(appt.appointmentDate, appt.schedule?.startTime)}
+                  </div>
+                  <div className="list-subtitle">
+                    {appt.doctor?.person?.fullName} · {appt.appointmentType}
+                  </div>
+                  <div className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                    {appt.doctor?.specialty?.name} · {appt.schedule?.room?.roomName}
+                  </div>
+                  <div className="badge">{appt.status}</div>
                   <button
                     className="btn-tertiary"
                     onClick={() => handleCancel(appt.id)}
-                    style={{ marginTop: '0.5rem', width: '100%', textAlign: 'center' }}
+                    disabled={appt.status === "Completed" || appt.status === "Cancelled"}
                   >
                     Cancel
                   </button>
-                )}
-                 {appt.status === 'Confirmed' && (
-                  <div style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '0.5rem', fontStyle: 'italic' }}>
-                    Contact clinic to cancel
+                </li>
+              ))}
+              {upcomingAppointments.length === 0 && (
+                <li className="list-empty">No upcoming appointments.</li>
+              )}
+            </ul>
+          </div>
+
+          <div className="card">
+            <h3>Past Appointments</h3>
+            <ul className="list">
+              {pastAppointments.map((appt) => (
+                <li key={appt.id} className="list-item">
+                  <div className="list-title">
+                    {formatDateTime(appt.appointmentDate, appt.schedule?.startTime)} · {appt.appointmentType}
                   </div>
-                )}
-              </li>
-            ))}
-            {upcomingAppointments.length === 0 && (
-              <li className="list-empty">No upcoming appointments.</li>
-            )}
-          </ul>
-        </div>
-
-        {/* Card 2: Past Appointments */}
-        <div className="card">
-          <h3>Past Appointments</h3>
-          <ul className="list">
-            {pastAppointments.map((appt) => (
-              <li key={appt.id} className="list-item">
-                <div className="list-title">
-                  {appt.date} · {appt.specialty}
-                </div>
-                <div className="list-subtitle">{appt.doctor}</div>
-                <p className="muted" style={{ fontSize: '0.9rem', marginTop: '0.25rem' }}>Notes: {appt.notes}</p>
-              </li>
-            ))}
-            {pastAppointments.length === 0 && (
-              <li className="list-empty">No past appointments.</li>
-            )}
-          </ul>
-        </div>
-
-        {/* Card 3: Quick Actions - Book Appointment */}
-        <div className="card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', textAlign: 'center', padding: '2rem' }}>
-          <div style={{ fontSize: '2rem', marginBottom: '1rem' }}>📅</div>
-          <h3>Book New Appointment</h3>
-          <p style={{ color: 'var(--text-soft)', marginBottom: '1.5rem' }}>Schedule a new visit with one of our specialists.</p>
-          <button 
-            className="btn-primary" 
-            onClick={() => navigate('/book-appointment')}
-            style={{ width: '100%' }}
-          >
-            Book Now
-          </button>
-        </div>
-
-         {/* Card 4: Quick Actions - Medical Records */}
-         <div className="card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', textAlign: 'center', padding: '2rem' }}>
-          <div style={{ fontSize: '2rem', marginBottom: '1rem' }}>📋</div>
-          <h3>Medical History</h3>
-          <p style={{ color: 'var(--text-soft)', marginBottom: '1.5rem' }}>View your complete medical records and prescriptions.</p>
-          <button 
-            className="btn-secondary" 
-            onClick={() => navigate('/medical-history')}
-            style={{ width: '100%' }}
-          >
-            View Records
-          </button>
-        </div>
-
-      </section>
+                  <div className="list-subtitle">{appt.doctor?.person?.fullName}</div>
+                  {appt.medicalRecord && appt.medicalRecord.length > 0 && (
+                    <p className="muted">
+                      {appt.medicalRecord[0].diagnosis} - {appt.medicalRecord[0].notes}
+                    </p>
+                  )}
+                </li>
+              ))}
+              {pastAppointments.length === 0 && (
+                <li className="list-empty">No past appointments.</li>
+              )}
+            </ul>
+          </div>
+        </section>
+      )}
     </div>
   );
 }
-

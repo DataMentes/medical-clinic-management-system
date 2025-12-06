@@ -1,29 +1,52 @@
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
+import { logout } from "../api/auth.api.js";
 
 const allNavItems = {
-  patient: [
-    { to: "/patient-dashboard", label: "Dashboard" },
+  Patient: [
+    { to: "/patient-dashboard", label: "Patient Dashboard" },
     { to: "/book-appointment", label: "Book Appointment" },
     { to: "/medical-history", label: "Medical History" },
     { to: "/patient-settings", label: "Settings" }
   ],
+  patient: [
+    { to: "/patient-dashboard", label: "Patient Dashboard" },
+    { to: "/book-appointment", label: "Book Appointment" },
+    { to: "/medical-history", label: "Medical History" },
+    { to: "/patient-settings", label: "Settings" }
+  ],
+  Doctor: [
+    { to: "/doctor-dashboard", label: "Doctor Dashboard" },
+    { to: "/doctor-settings", label: "Settings" }
+  ],
   doctor: [
-    { to: "/doctor-dashboard", label: "Dashboard" },
+    { to: "/doctor-dashboard", label: "Doctor Dashboard" },
     { to: "/doctor-settings", label: "Settings" }
   ],
   Admin: [
-    { to: "/admin-dashboard", label: "Dashboard" },
-    { to: "/manage-doctors", label: "Doctors" },
-    { to: "/manage-patients", label: "Patients" },
-    { to: "/manage-appointments", label: "Appointments" },
+    { to: "/admin-dashboard", label: "Admin Dashboard" },
+    { to: "/admin-manage-admins", label: "Manage Admins" },
+    { to: "/admin-manage-doctors", label: "Manage Doctors" },
+    { to: "/admin-manage-patients", label: "Manage Patients" },
+    { to: "/admin-manage-receptionists", label: "Manage Receptionists" },
+    { to: "/admin-manage-schedules", label: "Manage Schedules" },
+    { to: "/admin-manage-appointments", label: "Manage Appointments" },
+    { to: "/admin-manage-rooms", label: "Manage Rooms" },
+    { to: "/admin-manage-specialties", label: "Manage Specialties" },
+    { to: "/admin-reports", label: "Reports" },
     { to: "/admin-settings", label: "Settings" }
   ],
   admin: [
-    { to: "/admin-dashboard", label: "Dashboard" },
-    { to: "/manage-doctors", label: "Doctors" },
-    { to: "/manage-patients", label: "Patients" },
-    { to: "/manage-appointments", label: "Appointments" },
+    { to: "/admin-dashboard", label: "Admin Dashboard" },
+    { to: "/admin-manage-admins", label: "Manage Admins" },
+    { to: "/admin-manage-doctors", label: "Manage Doctors" },
+    { to: "/admin-manage-patients", label: "Manage Patients" },
+    { to: "/admin-manage-receptionists", label: "Manage Receptionists" },
+    { to: "/admin-manage-schedules", label: "Manage Schedules" },
+    { to: "/admin-manage-appointments", label: "Manage Appointments" },
+    { to: "/admin-manage-rooms", label: "Manage Rooms" },
+    { to: "/admin-manage-specialties", label: "Manage Specialties" },
+    { to: "/admin-reports", label: "Reports" },
     { to: "/admin-settings", label: "Settings" }
   ],
   Receptionist: [
@@ -39,18 +62,37 @@ const allNavItems = {
 export default function DashboardLayout() {
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [userRole, setUserRole] = useState("doctor"); // default
+  const [userRole, setUserRole] = useState(() => {
+    return localStorage.getItem("userRole") || "Patient";
+  });
 
   useEffect(() => {
-    const role = localStorage.getItem("userRole") || "doctor";
-    setUserRole(role);
+    // Function to update role from localStorage
+    const updateRole = () => {
+      const role = localStorage.getItem("userRole") || "Patient";
+      console.log('🔐 User role updated:', role);
+      setUserRole(role);
+    };
+
+    // Listen for storage events (when localStorage changes from other tabs)
+    window.addEventListener('storage', updateRole);
+
+    // Listen for custom event (when localStorage changes in same tab after login)
+    window.addEventListener('roleChange', updateRole);
+
+    // Check role on mount
+    updateRole();
+
+    return () => {
+      window.removeEventListener('storage', updateRole);
+      window.removeEventListener('roleChange', updateRole);
+    };
   }, []);
 
-  const navItems = allNavItems[userRole] || allNavItems.doctor;
+  const navItems = allNavItems[userRole] || allNavItems.Patient;
 
   const handleLogout = () => {
-    // مسح الـ role من localStorage
-    localStorage.removeItem("userRole");
+    logout();
     navigate("/login");
   };
 
@@ -123,5 +165,3 @@ export default function DashboardLayout() {
     </div>
   );
 }
-
-

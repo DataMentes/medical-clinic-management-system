@@ -1,4 +1,5 @@
 const prisma = require('../../config/database');
+const { NotFoundError, ConflictError } = require('../../utils/error');
 
 class PatientService {
   /**
@@ -10,7 +11,12 @@ class PatientService {
     const targetDate = new Date(date);
     const weekday = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][targetDate.getDay()];
 
-    return await prisma.doctor.findMany({
+    const startOfDay = new Date(targetDate);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(targetDate);
+    endOfDay.setHours(23, 59, 59, 999);
+
+    const doctors = await prisma.doctor.findMany({
       where: {
         specialtyId: parseInt(specialtyId),
         schedules: {
@@ -36,10 +42,54 @@ class PatientService {
             weekDay: weekday
           },
           include: {
-            room: true
+            room: true,
+            appointments: {
+              where: {
+                appointmentDate: {
+                  gte: startOfDay,
+                  lt: endOfDay
+                },
+                status: {
+                  not: 'Canceled'
+                }
+              }
+            }
           }
         }
       }
+    });
+
+    // Transform schedules to availableSlots format as per API documentation
+    return doctors.map(doctor => {
+      const availableSlots = doctor.schedules.map(schedule => {
+        const bookedCount = schedule.appointments?.length || 0;
+        const available = bookedCount < schedule.maxCapacity;
+        
+        // Format time from startTime
+        const time = schedule.startTime ? 
+          new Date(schedule.startTime).toLocaleTimeString('en-US', { 
+            hour: '2-digit', 
+            minute: '2-digit',
+            hour12: false 
+          }) : '00:00';
+
+        return {
+          scheduleId: schedule.id,
+          time,
+          available,
+          bookedCount,
+          maxCapacity: schedule.maxCapacity
+        };
+      });
+
+      return {
+        doctorId: doctor.id,
+        fullName: doctor.person.fullName,
+        specialty: doctor.specialty.name,
+        examinationFee: doctor.examinationFee,
+        consultationFee: doctor.consultationFee,
+        availableSlots
+      };
     });
   }
 
@@ -49,6 +99,7 @@ class PatientService {
   async getUpcomingAppointments(patientId) {
     const now = new Date();
 
+    // ✅ OPTIMIZED: Use select to fetch only needed fields
     return await prisma.appointment.findMany({
       where: {
         patientId: parseInt(patientId),
@@ -59,9 +110,14 @@ class PatientService {
           not: 'Canceled'
         }
       },
-      include: {
+      select: {
+        id: true,
+        appointmentDate: true,
+        appointmentType: true,
+        status: true,
+        feePaid: true,
         doctor: {
-          include: {
+          select: {
             person: {
               select: {
                 fullName: true
@@ -75,8 +131,14 @@ class PatientService {
           }
         },
         schedule: {
-          include: {
-            room: true
+          select: {
+            startTime: true,
+            endTime: true,
+            room: {
+              select: {
+                roomName: true
+              }
+            }
           }
         }
       },
@@ -92,6 +154,7 @@ class PatientService {
   async getPastAppointments(patientId) {
     const now = new Date();
 
+    // ✅ OPTIMIZED: Use select
     return await prisma.appointment.findMany({
       where: {
         patientId: parseInt(patientId),
@@ -99,9 +162,14 @@ class PatientService {
           lt: now
         }
       },
-      include: {
+      select: {
+        id: true,
+        appointmentDate: true,
+        appointmentType: true,
+        status: true,
+        feePaid: true,
         doctor: {
-          include: {
+          select: {
             person: {
               select: {
                 fullName: true
@@ -115,11 +183,24 @@ class PatientService {
           }
         },
         schedule: {
-          include: {
-            room: true
+          select: {
+            startTime: true,
+            endTime: true,
+            room: {
+              select: {
+                roomName: true
+              }
+            }
           }
         },
-        medicalRecord: true
+        medicalRecord: {
+          select: {
+            id: true,
+            diagnosis: true,
+            prescription: true,
+            notes: true
+          }
+        }
       },
       orderBy: {
         appointmentDate: 'desc'
@@ -131,17 +212,25 @@ class PatientService {
    * Get all medical records for patient
    */
   async getMedicalRecords(patientId) {
+    // ✅ OPTIMIZED: Use select
     return await prisma.medicalRecord.findMany({
       where: {
         appointment: {
           patientId: parseInt(patientId)
         }
       },
-      include: {
+      select: {
+        id: true,
+        diagnosis: true,
+        prescription: true,
+        notes: true,
         appointment: {
-          include: {
+          select: {
+            id: true,
+            appointmentDate: true,
+            appointmentType: true,
             doctor: {
-              include: {
+              select: {
                 person: {
                   select: {
                     fullName: true
@@ -165,7 +254,7 @@ class PatientService {
         }
       },
       orderBy: {
-        id: 'desc'  // Use id instead of createdAt (which doesn't exist in schema)
+        id: 'desc'
       }
     });
   }
@@ -194,7 +283,7 @@ class PatientService {
       where: { userId }
     });
 
-    if (!person) throw new Error('Person not found');
+    if (!person) throw new NotFoundError('Person');
 
     return await prisma.person.update({
       where: { userId },
@@ -212,7 +301,7 @@ class PatientService {
     });
 
     if (existingUser && existingUser.userId !== userId) {
-      throw new Error('Email already in use');
+      throw new ConflictError('Email already in use');
     }
 
     return await prisma.user.update({

@@ -1,52 +1,50 @@
 import { useState, useEffect } from "react";
-import { adminService } from "../api/adminService";
+import PageHeader from "../components/PageHeader.jsx";
+import DataTable from "../components/DataTable.jsx";
+import CRUDModal from "../components/CRUDModal.jsx";
+import ConfirmDialog from "../components/ConfirmDialog.jsx";
+
+const RECEPTIONISTS_KEY = "receptionistsData";
 
 export default function ManageReceptionists() {
   const [receptionists, setReceptionists] = useState([]);
   const [showModal, setShowModal] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deletingId, setDeletingId] = useState(null);
   const [editingReceptionist, setEditingReceptionist] = useState(null);
-  const [loading, setLoading] = useState(true);
   const [formData, setFormData] = useState({
     fullName: "",
     email: "",
     phone: "",
     password: "",
-    gender: "Male"
+    gender: "male",
+    shiftStart: "",
+    shiftEnd: ""
   });
 
-  // Fetch receptionists
   useEffect(() => {
-    fetchReceptionists();
-  }, []);
-
-  const fetchReceptionists = async () => {
-    try {
-      setLoading(true);
-      const response = await adminService.getAllReceptionists();
-      // Backend returns: {success: true, data: {receptionists: [...], pagination: {...}}}
-      const receptionistsData = response.receptionists || [];
-      
-      const formattedReceptionists = receptionistsData.map(r => ({
-        userId: r.userId,
-        fullName: r.fullName,
-        email: r.email,
-        phone: r.phoneNumber,
-        gender: r.gender
-      }));
-      setReceptionists(formattedReceptionists);
-    } catch (error) {
-      console.error("Failed to fetch receptionists:", error);
-    } finally {
-      setLoading(false);
+    const savedReceptionists = JSON.parse(localStorage.getItem(RECEPTIONISTS_KEY) || "[]");
+    if (savedReceptionists.length === 0) {
+      const defaultReceptionists = [
+        {
+          id: 1,
+          fullName: "Mona Ahmed",
+          email: "mona@clinic.com",
+          gender: "female",
+          shiftStart: "08:00",
+          shiftEnd: "16:00"
+        }
+      ];
+      setReceptionists(defaultReceptionists);
+      localStorage.setItem(RECEPTIONISTS_KEY, JSON.stringify(defaultReceptionists));
+    } else {
+      setReceptionists(savedReceptionists);
     }
-  };
+  }, []);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setFormData((prev) => ({
-      ...prev,
-      [name]: value
-    }));
+    setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
   const handleAdd = () => {
@@ -56,7 +54,9 @@ export default function ManageReceptionists() {
       email: "",
       phone: "",
       password: "",
-      gender: "Male"
+      gender: "male",
+      shiftStart: "",
+      shiftEnd: ""
     });
     setShowModal(true);
   };
@@ -68,247 +68,140 @@ export default function ManageReceptionists() {
       email: receptionist.email,
       phone: receptionist.phone || "",
       password: "",
-      gender: receptionist.gender || "Male"
+      gender: receptionist.gender || "male",
+      shiftStart: receptionist.shiftStart || "",
+      shiftEnd: receptionist.shiftEnd || ""
     });
     setShowModal(true);
   };
 
-  const handleDelete = async (userId) => {
-    if (window.confirm("Are you sure you want to delete this receptionist?")) {
-      try {
-        await adminService.deleteReceptionist(userId);
-        setReceptionists(prev => prev.filter(r => r.userId !== userId));
-      } catch (error) {
-        console.error("Failed to delete receptionist:", error);
-        alert("Failed to delete receptionist: " + (error.response?.data?.error || error.message));
-      }
-    }
+  const handleDeleteClick = (id) => {
+    setDeletingId(id);
+    setShowDeleteConfirm(true);
   };
 
-  const handleSubmit = async (e) => {
+  const handleDeleteConfirm = () => {
+    const updated = receptionists.filter((receptionist) => receptionist.id !== deletingId);
+    setReceptionists(updated);
+    localStorage.setItem(RECEPTIONISTS_KEY, JSON.stringify(updated));
+    setDeletingId(null);
+  };
+
+  const handleSubmit = (e) => {
     e.preventDefault();
 
-    try {
-      const receptionistData = {
+    if (editingReceptionist) {
+      const updated = receptionists.map((receptionist) =>
+        receptionist.id === editingReceptionist.id
+          ? {
+            ...receptionist,
+            fullName: formData.fullName,
+            email: formData.email,
+            phone: formData.phone,
+            gender: formData.gender,
+            shiftStart: formData.shiftStart,
+            shiftEnd: formData.shiftEnd,
+            ...(formData.password && { password: formData.password })
+          }
+          : receptionist
+      );
+      setReceptionists(updated);
+      localStorage.setItem(RECEPTIONISTS_KEY, JSON.stringify(updated));
+    } else {
+      const newReceptionist = {
+        id: Date.now(),
         fullName: formData.fullName,
         email: formData.email,
-        phoneNumber: formData.phone,
-        gender: formData.gender.charAt(0).toUpperCase() + formData.gender.slice(1) // Capitalize: Male/Female
+        phone: formData.phone,
+        password: formData.password,
+        gender: formData.gender,
+        shiftStart: formData.shiftStart,
+        shiftEnd: formData.shiftEnd
       };
-
-      if (editingReceptionist) {
-        // Update
-        if (formData.password) {
-          receptionistData.password = formData.password;
-        }
-        await adminService.updateReceptionist(editingReceptionist.userId, receptionistData);
-        alert("Receptionist updated successfully");
-      } else {
-        // Create
-        receptionistData.password = formData.password;
-        await adminService.createReceptionist(receptionistData);
-        alert("Receptionist created successfully");
-      }
-
-      setShowModal(false);
-      setEditingReceptionist(null);
-      fetchReceptionists(); // Refresh list
-
-    } catch (error) {
-      console.error("Operation failed:", error);
-      alert("Operation failed: " + (error.response?.data?.error || error.message));
+      const updated = [...receptionists, newReceptionist];
+      setReceptionists(updated);
+      localStorage.setItem(RECEPTIONISTS_KEY, JSON.stringify(updated));
     }
+
+    setShowModal(false);
+    setFormData({
+      fullName: "",
+      email: "",
+      phone: "",
+      password: "",
+      gender: "male",
+      shiftStart: "",
+      shiftEnd: ""
+    });
+    setEditingReceptionist(null);
   };
 
-  if (loading) return <div className="page"><p>Loading receptionists...</p></div>;
+  const columns = [
+    { key: 'email', label: 'Email' },
+    { key: 'fullName', label: 'Name' },
+    {
+      key: 'shift',
+      label: 'Shift',
+      render: (_, row) => row.shiftStart && row.shiftEnd ? `${row.shiftStart} - ${row.shiftEnd}` : 'N/A'
+    }
+  ];
+
+  const formFields = [
+    { name: 'fullName', label: 'Full Name', type: 'text', required: true, placeholder: 'Enter full name' },
+    { name: 'email', label: 'Email', type: 'email', required: true, placeholder: 'receptionist@clinic.com' },
+    { name: 'phone', label: 'Phone', type: 'tel', required: true, placeholder: '+20 100 123 4567' },
+    { name: 'password', label: 'Password', type: 'password', required: !editingReceptionist, placeholder: editingReceptionist ? 'Leave empty to keep current' : 'Enter password' },
+    { name: 'gender', label: 'Gender', type: 'select', required: true, options: [{ value: 'male', label: 'Male' }, { value: 'female', label: 'Female' }] },
+    { name: 'shiftStart', label: 'Shift Start', type: 'time', required: true, gridColumn: true },
+    { name: 'shiftEnd', label: 'Shift End', type: 'time', required: true, gridColumn: true }
+  ];
 
   return (
     <div className="page">
-      <header className="page-header">
-        <h1>Manage Receptionists</h1>
-        <p>Add, edit, or remove receptionist accounts.</p>
-      </header>
+      <PageHeader
+        title="Manage Receptionists"
+        description="Add, edit, or remove receptionist accounts."
+        action={{
+          label: "+ Add Receptionist",
+          onClick: handleAdd
+        }}
+      />
 
       <div className="card">
         <div className="card-header">
           <h3>Receptionists</h3>
-          <button className="btn-primary" onClick={handleAdd}>
-            + Add Receptionist
-          </button>
         </div>
 
-        <table
-          style={{
-            width: "100%",
-            borderCollapse: "collapse",
-            marginTop: "1rem"
-          }}
-        >
-          <thead>
-            <tr style={{ borderBottom: "1px solid var(--border-subtle)" }}>
-              <th style={{ textAlign: "left", padding: "0.75rem", color: "var(--text-soft)" }}>
-                Full Name
-              </th>
-              <th style={{ textAlign: "left", padding: "0.75rem", color: "var(--text-soft)" }}>
-                Email
-              </th>
-              <th style={{ textAlign: "left", padding: "0.75rem", color: "var(--text-soft)" }}>
-                Phone
-              </th>
-              <th style={{ textAlign: "right", padding: "0.75rem", color: "var(--text-soft)" }}>
-                Actions
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {receptionists.map((receptionist) => (
-              <tr
-                key={receptionist.userId}
-                style={{
-                  borderBottom: "1px solid var(--border-subtle)",
-                  transition: "background var(--transition-fast)"
-                }}
-                onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-soft)")}
-                onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
-              >
-                <td style={{ padding: "0.75rem" }}>{receptionist.fullName}</td>
-                <td style={{ padding: "0.75rem" }}>{receptionist.email}</td>
-                <td style={{ padding: "0.75rem" }}>{receptionist.phone}</td>
-                <td style={{ padding: "0.75rem", textAlign: "right" }}>
-                  <div style={{ display: "flex", gap: "0.5rem", justifyContent: "flex-end" }}>
-                    <button
-                      className="btn-secondary"
-                      onClick={() => handleEdit(receptionist)}
-                      style={{ padding: "0.4rem 0.8rem", fontSize: "0.85rem" }}
-                    >
-                      Edit
-                    </button>
-                    <button
-                      className="btn-primary"
-                      onClick={() => handleDelete(receptionist.userId)}
-                      style={{
-                        padding: "0.4rem 0.8rem",
-                        fontSize: "0.85rem",
-                        background: "var(--danger)"
-                      }}
-                    >
-                      Delete
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-            {receptionists.length === 0 && (
-              <tr>
-                <td colSpan="4" style={{ textAlign: "center", padding: "1rem" }}>No receptionists found.</td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+        <DataTable
+          columns={columns}
+          data={receptionists}
+          onEdit={handleEdit}
+          onDelete={handleDeleteClick}
+          emptyMessage="No receptionists found. Click 'Add Receptionist' to create one."
+        />
       </div>
 
-      {/* Modal: Add/Edit Receptionist */}
-      {showModal && (
-        <div
-          style={{
-            position: "fixed",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: "rgba(0, 0, 0, 0.7)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 1000,
-            padding: "1rem"
-          }}
-          onClick={() => setShowModal(false)}
-        >
-          <div
-            className="card"
-            style={{
-              maxWidth: "500px",
-              width: "100%",
-              position: "relative"
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <form className="form" onSubmit={handleSubmit}>
-              <h2>{editingReceptionist ? "Edit Receptionist" : "Add Receptionist"}</h2>
-              <label className="field">
-                <span>Full Name</span>
-                <input
-                  type="text"
-                  name="fullName"
-                  value={formData.fullName}
-                  onChange={handleChange}
-                  required
-                  placeholder="Enter full name"
-                />
-              </label>
-              <label className="field">
-                <span>Email</span>
-                <input
-                  type="email"
-                  name="email"
-                  value={formData.email}
-                  onChange={handleChange}
-                  required
-                  placeholder="receptionist@clinic.com"
-                />
-              </label>
-              <label className="field">
-                <span>Phone</span>
-                <input
-                  type="tel"
-                  name="phone"
-                  value={formData.phone}
-                  onChange={handleChange}
-                  required
-                  placeholder="+20 100 123 4567"
-                />
-              </label>
-              <label className="field">
-                <span>Password</span>
-                <input
-                  type="password"
-                  name="password"
-                  value={formData.password}
-                  onChange={handleChange}
-                  required={!editingReceptionist}
-                  placeholder={editingReceptionist ? "Leave empty to keep current password" : "Enter password"}
-                />
-              </label>
-              <label className="field">
-                <span>Gender</span>
-                <select
-                  name="gender"
-                  value={formData.gender}
-                  onChange={handleChange}
-                  required
-                >
-                  <option value="Male">Male</option>
-                  <option value="Female">Female</option>
-                </select>
-              </label>
-              <div style={{ display: "flex", gap: "0.75rem", marginTop: "1.5rem" }}>
-                <button
-                  type="button"
-                  className="btn-secondary"
-                  onClick={() => setShowModal(false)}
-                  style={{ flex: 1 }}
-                >
-                  Cancel
-                </button>
-                <button type="submit" className="btn-primary" style={{ flex: 1 }}>
-                  {editingReceptionist ? "Update" : "Add"}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      <CRUDModal
+        isOpen={showModal}
+        onClose={() => setShowModal(false)}
+        onSubmit={handleSubmit}
+        title={editingReceptionist ? "Edit Receptionist" : "Add Receptionist"}
+        formFields={formFields}
+        formData={formData}
+        onChange={handleChange}
+        submitLabel={editingReceptionist ? "Update" : "Add"}
+        isEditing={!!editingReceptionist}
+      />
+
+      <ConfirmDialog
+        isOpen={showDeleteConfirm}
+        onClose={() => setShowDeleteConfirm(false)}
+        onConfirm={handleDeleteConfirm}
+        title="Delete Receptionist"
+        message="Are you sure you want to delete this receptionist? This action cannot be undone."
+        confirmLabel="Delete"
+        variant="danger"
+      />
     </div>
   );
 }

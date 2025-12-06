@@ -1,6 +1,6 @@
 const patientService = require('../services/patient/patient.service');
 const appointmentService = require('../services/appointment/appointment.service');
-const specialtyService = require('../services/common/specialty.service');
+const adminService = require('../services/admin/admin.service');
 const emailService = require('../services/email.service');
 const { generateOTP, getOTPExpiry } = require('../utils/otp');
 const prisma = require('../config/database');
@@ -13,7 +13,7 @@ class PatientController {
    */
   async getSpecialties(req, res, next) {
     try {
-      const specialties = await specialtyService.getAll();
+      const { specialties } = await adminService.getAllSpecialties({ skip: 0, take: 100, search: '' });
 
       return res.json({
         success: true,
@@ -59,7 +59,7 @@ class PatientController {
    */
   async bookAppointment(req, res, next) {
     try {
-      const { doctorId, scheduleId, appointmentType, feePaid } = req.body;
+      const { doctorId, scheduleId, appointmentDate, appointmentType, feePaid } = req.body;
       const userId = req.user.userId; // From auth middleware
 
       // Validation
@@ -88,9 +88,22 @@ class PatientController {
       const patientId = person.patient.id;
 
       // Check schedule capacity
-      const appointmentCount = await appointmentService.countBySchedule(scheduleId);
       const schedule = await prisma.doctorSchedule.findUnique({
         where: { id: parseInt(scheduleId) }
+      });
+
+      if (!schedule) {
+        return res.status(404).json({
+          success: false,
+          error: 'Schedule not found'
+        });
+      }
+
+      const appointmentCount = await prisma.appointment.count({
+        where: {
+          scheduleId: parseInt(scheduleId),
+          status: { not: 'Canceled' }
+        }
       });
 
       if (appointmentCount >= schedule.maxCapacity) {
@@ -101,12 +114,48 @@ class PatientController {
       }
 
       // Create appointment
-      const appointment = await appointmentService.create({
+      console.log('📝 Creating appointment with data:', {
         patientId,
         doctorId: parseInt(doctorId),
         scheduleId: parseInt(scheduleId),
+        appointmentDate,
+        appointmentDateParsed: new Date(appointmentDate),
         appointmentType,
+        status: 'Pending',
         feePaid: feePaid || 0
+      });
+
+      const appointment = await prisma.appointment.create({
+        data: {
+          patientId,
+          doctorId: parseInt(doctorId),
+          scheduleId: parseInt(scheduleId),
+          appointmentDate: new Date(appointmentDate),
+          appointmentType,
+          status: 'Pending',
+          feePaid: feePaid || 0
+        },
+        include: {
+          doctor: {
+            include: {
+              person: true,
+              specialty: true
+            }
+          },
+          schedule: {
+            include: {
+              room: true
+            }
+          }
+        }
+      });
+
+      console.log('✅ Appointment created successfully:', {
+        id: appointment.id,
+        patientId: appointment.patientId,
+        doctorId: appointment.doctorId,
+        appointmentDate: appointment.appointmentDate,
+        status: appointment.status
       });
 
       // Send email notification

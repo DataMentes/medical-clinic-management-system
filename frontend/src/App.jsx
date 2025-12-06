@@ -3,11 +3,6 @@ import AuthLayout from "./layouts/AuthLayout.jsx";
 import DashboardLayout from "./layouts/DashboardLayout.jsx";
 import LoginPage from "./pages/LoginPage.jsx";
 import RegisterPage from "./pages/RegisterPage.jsx";
-import DashboardHome from "./pages/DashboardHome.jsx";
-import AppointmentsPage from "./pages/AppointmentsPage.jsx";
-import PatientsPage from "./pages/PatientsPage.jsx";
-import ReportsPage from "./pages/ReportsPage.jsx";
-import AdminPage from "./pages/AdminPage.jsx";
 import AdminDashboard from "./pages/AdminDashboard.jsx";
 import ManageAdmins from "./pages/ManageAdmins.jsx";
 import ManageDoctors from "./pages/ManageDoctors.jsx";
@@ -21,13 +16,12 @@ import AdminReportsPage from "./pages/AdminReportsPage.jsx";
 import ReceptionistDashboard from "./pages/ReceptionistDashboard.jsx";
 import PatientDashboard from "./pages/PatientDashboard.jsx";
 import BookAppointmentPage from "./pages/BookAppointmentPage.jsx";
-import MedicalHistoryPage from "./pages/MedicalHistoryPage.jsx";
 import PatientSettings from "./pages/PatientSettings.jsx";
 import DoctorDashboard from "./pages/DoctorDashboard.jsx";
-import DoctorMedicalRecordEditor from "./pages/DoctorMedicalRecordEditor.jsx";
 import DoctorSettings from "./pages/DoctorSettings.jsx";
 import ReceptionistSettings from "./pages/ReceptionistSettings.jsx";
 import AdminSettings from "./pages/AdminSettings.jsx";
+import MedicalHistoryPage from "./pages/MedicalHistoryPage.jsx";
 
 export default function App() {
   return (
@@ -41,11 +35,6 @@ export default function App() {
       </Route>
 
       <Route element={<DashboardLayout />}>
-        <Route path="/dashboard" element={<DashboardHome />} />
-        <Route path="/appointments" element={<AppointmentsPage />} />
-        <Route path="/patients" element={<PatientsPage />} />
-        <Route path="/reports" element={<ReportsPage />} />
-        <Route path="/admin" element={<AdminPage />} />
         {/* Admin routes */}
         <Route path="/admin-dashboard" element={<AdminDashboard />} />
         <Route path="/admin-manage-admins" element={<ManageAdmins />} />
@@ -69,10 +58,6 @@ export default function App() {
         <Route path="/patient-settings" element={<PatientSettings />} />
         {/* Doctor routes */}
         <Route path="/doctor-dashboard" element={<DoctorDashboard />} />
-        <Route
-          path="/doctor-medical-record"
-          element={<DoctorMedicalRecordEditor />}
-        />
         <Route path="/doctor-settings" element={<DoctorSettings />} />
       </Route>
 

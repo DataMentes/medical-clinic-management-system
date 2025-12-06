@@ -1,24 +1,29 @@
 import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { receptionistService } from "../api/receptionistService";
-import { adminService } from "../api/adminService";
+
+const APPOINTMENTS_KEY = "adminAppointmentsData";
+const PATIENTS_KEY = "adminPatientsData";
+const DOCTORS_KEY = "doctorsData";
+const SCHEDULES_KEY = "schedulesData";
+const SPECIALTIES_KEY = "specialtiesData";
+const PATIENTS_IN_CLINIC_KEY = "patientsInClinicNow";
 
 export default function ReceptionistDashboard() {
   const navigate = useNavigate();
   const [appointments, setAppointments] = useState([]);
-  const [patients, setPatients] = useState([]); // We might not need full patients list if we search
+  const [patients, setPatients] = useState([]);
   const [doctors, setDoctors] = useState([]);
   const [schedules, setSchedules] = useState([]);
   const [specialties, setSpecialties] = useState([]);
   const [showBookForm, setShowBookForm] = useState(false);
   const [selectedAppointmentCard, setSelectedAppointmentCard] = useState(null);
   const [searchPatientName, setSearchPatientName] = useState("");
-  const [loading, setLoading] = useState(true);
 
   // Form state for booking
   const [bookFormData, setBookFormData] = useState({
     patientName: "",
     phoneNumber: "",
+    gender: "",
     specialtyId: "",
     appointmentType: "Examination",
     selectedDate: null,
@@ -26,86 +31,163 @@ export default function ReceptionistDashboard() {
     selectedTime: null
   });
 
-  // Fetch all initial data
+  // قراءة البيانات
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [
-          doctorsData,
-          specialtiesData,
-          schedulesData,
-          dashboardData
-        ] = await Promise.all([
-          adminService.getAllDoctors(),
-          adminService.getAllSpecialties(),
-          adminService.getAllSchedules(),
-          receptionistService.getDashboard()
-        ]);
+    const savedPatients = JSON.parse(localStorage.getItem(PATIENTS_KEY) || "[]");
+    setPatients(savedPatients);
 
-        // Transform doctors data
-        const formattedDoctors = doctorsData.map(d => ({
-          id: d.id,
-          fullName: d.user.fullName,
-          email: d.user.email,
-          specialty: d.specialty?.name || "General",
-          examinationFee: d.examinationFee,
-          consultationFee: d.consultationFee
-        }));
+    const savedDoctors = JSON.parse(localStorage.getItem(DOCTORS_KEY) || "[]");
+    if (savedDoctors.length === 0) {
+      const defaultDoctors = [
+        {
+          id: 1,
+          fullName: "Dr. Omar Hassan",
+          email: "omar@clinic.com",
+          specialty: "Cardiology",
+          examinationFee: 500,
+          consultationFee: 300
+        },
+        {
+          id: 2,
+          fullName: "Dr. Lina Mohamed",
+          email: "lina@clinic.com",
+          specialty: "Dermatology",
+          examinationFee: 400,
+          consultationFee: 250
+        }
+      ];
+      setDoctors(defaultDoctors);
+      localStorage.setItem(DOCTORS_KEY, JSON.stringify(defaultDoctors));
+    } else {
+      setDoctors(savedDoctors);
+    }
 
-        setDoctors(formattedDoctors);
-        setSpecialties(specialtiesData);
-        setSchedules(schedulesData);
+    const savedSpecialties = JSON.parse(localStorage.getItem(SPECIALTIES_KEY) || "[]");
+    setSpecialties(savedSpecialties);
 
-        // Format appointments from dashboard
-        const flatAppointments = dashboardData.todaysAppointments.map(appt => ({
-          id: appt.id,
-          patientId: appt.patient.id,
-          patientName: appt.patient.person.fullName,
-          phoneNumber: appt.patient.person.phoneNumber,
-          doctorId: appt.doctor.id,
-          type: appt.type === 'EXAMINATION' ? 'Examination' : 'Consultation',
-          status: appt.status === 'CONFIRMED' ? 'Confirmed' : appt.status === 'CHECKED_IN' ? 'Checked-In' : appt.status,
-          feePaid: appt.feePaid,
-          bookingTime: new Date(appt.appointmentDate.split('T')[0] + 'T' + appt.appointmentTime).toISOString()
-        }));
-        setAppointments(flatAppointments);
+    const savedAppointments = JSON.parse(
+      localStorage.getItem(APPOINTMENTS_KEY) || "null"
+    ) || [];
 
-      } catch (error) {
-        console.error('Failed to fetch receptionist data:', error);
-      } finally {
-        setLoading(false);
+    // Always create fresh mock data for today to ensure it shows up
+    const today = new Date();
+    const defaultAppointments = [
+      {
+        id: 1,
+        patientId: 1,
+        patientName: "Ahmed Mohamed",
+        phoneNumber: "+20 100 123 4567",
+        doctorId: 1,
+        type: "Examination",
+        status: "Confirmed",
+        feePaid: 500,
+        bookingTime: new Date(today.getFullYear(), today.getMonth(), today.getDate(), 9, 0, 0, 0).toISOString()
+      },
+      {
+        id: 2,
+        patientId: 2,
+        patientName: "Sara Ali",
+        phoneNumber: "+20 101 234 5678",
+        doctorId: 2,
+        type: "Consultation",
+        status: "Confirmed",
+        feePaid: 250,
+        bookingTime: new Date(today.getFullYear(), today.getMonth(), today.getDate(), 10, 30, 0, 0).toISOString()
+      },
+      {
+        id: 3,
+        patientId: 3,
+        patientName: "Mohamed Hassan",
+        phoneNumber: "+20 102 345 6789",
+        doctorId: 1,
+        type: "Examination",
+        status: "Confirmed",
+        feePaid: 500,
+        bookingTime: new Date(today.getFullYear(), today.getMonth(), today.getDate(), 11, 0, 0, 0).toISOString()
+      },
+      {
+        id: 4,
+        patientId: 4,
+        patientName: "Fatma Ibrahim",
+        phoneNumber: "+20 103 456 7890",
+        doctorId: 2,
+        type: "Examination",
+        status: "Confirmed",
+        feePaid: 400,
+        bookingTime: new Date(today.getFullYear(), today.getMonth(), today.getDate(), 14, 0, 0, 0).toISOString()
       }
-    };
+    ];
 
-    fetchData();
+    // Force update with fresh data
+    setAppointments(defaultAppointments);
+    localStorage.setItem(APPOINTMENTS_KEY, JSON.stringify(defaultAppointments));
+
+    const savedSchedules = JSON.parse(localStorage.getItem(SCHEDULES_KEY) || "null") || [];
+    if (savedSchedules.length === 0) {
+      const defaultSchedules = [
+        { id: 1, doctorId: 1, roomId: 1, day: "Monday", startTime: "09:00", endTime: "13:00", maxCapacity: 12 },
+        { id: 2, doctorId: 2, roomId: 2, day: "Monday", startTime: "13:00", endTime: "17:00", maxCapacity: 10 },
+        { id: 3, doctorId: 1, roomId: 1, day: "Tuesday", startTime: "09:00", endTime: "15:00", maxCapacity: 18 }
+      ];
+      setSchedules(defaultSchedules);
+      localStorage.setItem(SCHEDULES_KEY, JSON.stringify(defaultSchedules));
+    } else {
+      setSchedules(savedSchedules);
+    }
   }, []);
 
-  const handleCheckIn = async (appointmentId) => {
-    try {
-      await receptionistService.checkInPatient(appointmentId);
 
-      const updated = appointments.map((appt) =>
-        appt.id === appointmentId
-          ? { ...appt, status: "Checked-In" }
-          : appt
+  const handleCheckIn = (appointmentId) => {
+    const appointment = appointments.find((appt) => appt.id === appointmentId);
+    if (!appointment) return;
+
+    // تحديث حالة الحجز
+    const updated = appointments.map((appt) =>
+      appt.id === appointmentId
+        ? { ...appt, status: "Checked-In" }
+        : appt
+    );
+    setAppointments(updated);
+    localStorage.setItem(APPOINTMENTS_KEY, JSON.stringify(updated));
+
+    // إضافة المريض إلى قائمة المرضى داخل العيادة في Doctor Dashboard
+    const patientInClinic = {
+      id: appointmentId,
+      name: appointment.patientName || getPatientName(appointment.patientId),
+      reason: appointment.type,
+      doctorId: appointment.doctorId,
+      appointmentId: appointmentId,
+      checkInTime: new Date().toISOString()
+    };
+
+    const existingPatientsInClinic = JSON.parse(
+      localStorage.getItem(PATIENTS_IN_CLINIC_KEY) || "[]"
+    );
+    // التحقق من عدم وجود المريض بالفعل
+    const alreadyExists = existingPatientsInClinic.some(
+      (p) => p.appointmentId === appointmentId
+    );
+    if (!alreadyExists) {
+      const updatedPatientsInClinic = [...existingPatientsInClinic, patientInClinic];
+      localStorage.setItem(
+        PATIENTS_IN_CLINIC_KEY,
+        JSON.stringify(updatedPatientsInClinic)
       );
-      setAppointments(updated);
+    }
 
-      if (selectedAppointmentCard) {
-        const updatedGroup = updated.filter(a => a.doctorId === selectedAppointmentCard.doctorId);
-        setSelectedAppointmentCard(prev => ({
-          ...prev,
-          appointments: updatedGroup
-        }));
-      }
+    // Update the selected card view if open
+    if (selectedAppointmentCard) {
+      const updatedGroup = updated.filter(a => a.doctorId === selectedAppointmentCard.doctorId &&
+        new Date(a.bookingTime).toISOString().split("T")[0] === new Date().toISOString().split("T")[0]);
 
-      alert("Patient checked in successfully!");
-    } catch (error) {
-      console.error('Check-in failed:', error);
-      alert(error.message || 'Failed to check in patient');
+      setSelectedAppointmentCard(prev => ({
+        ...prev,
+        appointments: updatedGroup
+      }));
     }
   };
 
+  // الحصول على الأطباء المتاحين في يوم محدد
   const getAvailableDoctorsForDate = (selectedDate) => {
     if (!selectedDate) return [];
 
@@ -113,9 +195,10 @@ export default function ReceptionistDashboard() {
     const availableDoctors = [];
 
     schedules.forEach((schedule) => {
-      if (schedule.dayOfWeek === dayName) {
+      if (schedule.day === dayName) {
         const doctor = doctors.find((d) => d.id === schedule.doctorId);
         if (doctor) {
+          // إنشاء time slots بناءً على startTime و endTime
           const slots = generateTimeSlots(schedule.startTime, schedule.endTime);
           availableDoctors.push({
             doctorId: doctor.id,
@@ -131,6 +214,7 @@ export default function ReceptionistDashboard() {
     return availableDoctors;
   };
 
+  // إنشاء time slots من startTime إلى endTime
   const generateTimeSlots = (startTime, endTime) => {
     const slots = [];
     const [startHour, startMin] = startTime.split(":").map(Number);
@@ -145,93 +229,131 @@ export default function ReceptionistDashboard() {
     ) {
       const timeString = `${String(currentHour).padStart(2, "0")}:${String(currentMin).padStart(2, "0")}`;
       slots.push(timeString);
+
       currentMin += 30;
       if (currentMin >= 60) {
         currentMin = 0;
         currentHour++;
       }
     }
+
     return slots;
   };
 
+  // الحصول على سعر الحجز
   const getAppointmentPrice = (doctorId, appointmentType) => {
     const doctor = doctors.find((d) => d.id === doctorId);
     if (!doctor) return 0;
+
     return appointmentType === "Examination"
       ? doctor.examinationFee || 500
       : doctor.consultationFee || 300;
   };
 
-  const handleBookSubmit = async (e) => {
+  // معالجة إرسال نموذج الحجز
+  const handleBookSubmit = (e) => {
     e.preventDefault();
-    if (!bookFormData.patientName || !bookFormData.phoneNumber || !bookFormData.selectedDate || !bookFormData.selectedDoctorId || !bookFormData.selectedTime) {
+    if (
+      !bookFormData.patientName ||
+      !bookFormData.phoneNumber ||
+      !bookFormData.specialtyId ||
+      !bookFormData.selectedDate ||
+      !bookFormData.selectedDoctorId ||
+      !bookFormData.selectedTime
+    ) {
       alert("Please fill all fields");
       return;
     }
 
-    try {
-      let patientId;
-      const patientSearch = await receptionistService.searchPatients(bookFormData.phoneNumber);
+    // إنشاء موعد جديد
+    const selectedDate = bookFormData.selectedDate;
+    const bookingDateTime = new Date(selectedDate);
+    const [hours, minutes] = bookFormData.selectedTime.split(":");
+    bookingDateTime.setHours(parseInt(hours), parseInt(minutes), 0, 0);
 
-      if (patientSearch.length > 0) {
-        patientId = patientSearch[0].patient.id;
-      } else {
-        alert("Patient not found. Please register the patient first.");
-        return;
-      }
+    const price = getAppointmentPrice(
+      bookFormData.selectedDoctorId,
+      bookFormData.appointmentType
+    );
 
-      const appointmentDate = bookFormData.selectedDate.toISOString().split('T')[0];
-
-      await receptionistService.bookAppointment({
-        patientId,
-        doctorId: bookFormData.selectedDoctorId,
-        appointmentDate,
-        appointmentTime: bookFormData.selectedTime,
-        type: bookFormData.appointmentType.toUpperCase(),
-        notes: "Booked by receptionist"
-      });
-
-      // Refresh appointments
-      const dashboardData = await receptionistService.getDashboard();
-      const flatAppointments = dashboardData.todaysAppointments.map(appt => ({
-        id: appt.id,
-        patientId: appt.patient.id,
-        patientName: appt.patient.person.fullName,
-        phoneNumber: appt.patient.person.phoneNumber,
-        doctorId: appt.doctor.id,
-        type: appt.type === 'EXAMINATION' ? 'Examination' : 'Consultation',
-        status: appt.status === 'CONFIRMED' ? 'Confirmed' : appt.status === 'CHECKED_IN' ? 'Checked-In' : appt.status,
-        feePaid: appt.feePaid,
-        bookingTime: new Date(appt.appointmentDate.split('T')[0] + 'T' + appt.appointmentTime).toISOString()
-      }));
-      setAppointments(flatAppointments);
-
-      setShowBookForm(false);
-      setBookFormData({
-        patientName: "",
-        phoneNumber: "",
-        specialtyId: "",
-        appointmentType: "Examination",
-        selectedDate: null,
-        selectedDoctorId: null,
-        selectedTime: null
-      });
-
-      alert("Appointment booked successfully!");
-    } catch (error) {
-      console.error('Booking failed:', error);
-      alert('Failed to book appointment: ' + (error.response?.data?.error || error.message));
+    // البحث عن patientId إذا كان المريض موجوداً
+    let patientId = null;
+    const existingPatient = patients.find(
+      (p) => p.phone === bookFormData.phoneNumber || p.fullName === bookFormData.patientName
+    );
+    if (existingPatient) {
+      patientId = existingPatient.id;
+    } else {
+      // إنشاء مريض جديد
+      patientId = Date.now();
+      const newPatient = {
+        id: patientId,
+        fullName: bookFormData.patientName,
+        phone: bookFormData.phoneNumber,
+        gender: bookFormData.gender,
+        email: `${bookFormData.patientName.toLowerCase().replace(/\s+/g, ".")}@example.com`
+      };
+      const updatedPatients = [...patients, newPatient];
+      setPatients(updatedPatients);
+      localStorage.setItem(PATIENTS_KEY, JSON.stringify(updatedPatients));
     }
+
+    const newAppointment = {
+      id: Date.now(),
+      patientId: patientId,
+      patientName: bookFormData.patientName,
+
+      phoneNumber: bookFormData.phoneNumber,
+      doctorId: bookFormData.selectedDoctorId,
+      type: bookFormData.appointmentType,
+      status: "Confirmed",
+      feePaid: price,
+      bookingTime: bookingDateTime.toISOString()
+    };
+
+    const updated = [...appointments, newAppointment];
+    setAppointments(updated);
+    localStorage.setItem(APPOINTMENTS_KEY, JSON.stringify(updated));
+
+    // إغلاق النموذج وإعادة تعيين البيانات
+    setShowBookForm(false);
+    setBookFormData({
+      patientName: "",
+      phoneNumber: "",
+      gender: "",
+      specialtyId: "",
+      appointmentType: "Examination",
+      selectedDate: null,
+      selectedDoctorId: null,
+      selectedTime: null
+    });
+
+    alert("Appointment booked successfully!");
+  };
+
+  const getPatientName = (patientId) => {
+    const patient = patients.find((p) => p.id === patientId);
+    return patient ? patient.fullName : "Unknown Patient";
   };
 
   const getDoctorName = (doctorId) => {
+    // Ensure we compare loosely or convert both to strings/numbers
     const doctor = doctors.find((d) => d.id == doctorId);
     return doctor ? doctor.fullName : "Unknown Doctor";
   };
 
+  // الحصول على مواعيد اليوم مجمعة حسب الدكتور
   const getTodayAppointmentsByDoctor = () => {
+    const today = new Date().toISOString().split("T")[0];
+    const todayAppts = appointments.filter((appt) => {
+      if (!appt.bookingTime) return false;
+      const appointmentDate = new Date(appt.bookingTime).toISOString().split("T")[0];
+      return appointmentDate === today;
+    });
+
+    // تجميع حسب الدكتور
     const grouped = {};
-    appointments.forEach((appt) => {
+    todayAppts.forEach((appt) => {
       const doctorId = appt.doctorId;
       if (!grouped[doctorId]) {
         grouped[doctorId] = {
@@ -242,7 +364,25 @@ export default function ReceptionistDashboard() {
       }
       grouped[doctorId].appointments.push(appt);
     });
+
     return Object.values(grouped);
+  };
+
+  // الحصول على المرضى لحجز محدد
+  const getPatientsForAppointment = (doctorId, time) => {
+    const today = new Date().toISOString().split("T")[0];
+    return appointments.filter((appt) => {
+      if (appt.doctorId !== doctorId) return false;
+      if (!appt.bookingTime) return false;
+      const appointmentDate = new Date(appt.bookingTime).toISOString().split("T")[0];
+      if (appointmentDate !== today) return false;
+      const appointmentTime = new Date(appt.bookingTime).toLocaleTimeString("en-US", {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false
+      });
+      return appointmentTime === time;
+    });
   };
 
   const formatTime = (dateString) => {
@@ -254,6 +394,16 @@ export default function ReceptionistDashboard() {
     });
   };
 
+  const formatDate = (dateString) => {
+    if (!dateString) return "N/A";
+    const date = new Date(dateString);
+    return date.toLocaleDateString("en-US", {
+      weekday: "short",
+      month: "short",
+      day: "numeric"
+    });
+  };
+
   const todayDate = new Date();
   const todayPrettyDate = todayDate.toLocaleDateString("en-US", {
     weekday: "long",
@@ -262,31 +412,21 @@ export default function ReceptionistDashboard() {
     day: "numeric"
   });
 
+  // استخدام useMemo لتحديث القائمة تلقائياً عند تغيير appointments
   const todayAppointmentsByDoctor = useMemo(() => {
     return getTodayAppointmentsByDoctor();
   }, [appointments, doctors]);
-
   const availableDoctors = bookFormData.selectedDate
     ? getAvailableDoctorsForDate(bookFormData.selectedDate)
     : [];
 
+  // فلترة الأطباء حسب التخصص المختار
   const filteredDoctors = bookFormData.specialtyId
     ? availableDoctors.filter((doc) => {
       const specialty = specialties.find((s) => s.id === parseInt(bookFormData.specialtyId));
       return specialty && doc.specialty === specialty.name;
     })
     : availableDoctors;
-
-  if (loading) {
-    return (
-      <div className="page">
-        <header className="page-header">
-          <h1>Receptionist Dashboard</h1>
-          <p>Loading...</p>
-        </header>
-      </div>
-    );
-  }
 
   return (
     <div className="page">
@@ -296,13 +436,10 @@ export default function ReceptionistDashboard() {
       </header>
 
       {/* New Book Appointment Section */}
-      <div className="card" style={{ marginBottom: "1.5rem" }}>
-        <div className="card-header">
-          <h3>New Book Appointment</h3>
-          <button className="btn-primary" onClick={() => setShowBookForm(true)}>
-            + Add
-          </button>
-        </div>
+      <div className="card-header">
+        <button className="btn-primary" onClick={() => setShowBookForm(true)}>
+          New Book Appointment
+        </button>
       </div>
 
       {/* Today's Appointments Section */}
@@ -406,6 +543,7 @@ export default function ReceptionistDashboard() {
         )}
       </div>
 
+
       {/* Modal: Book Appointment Form */}
       {showBookForm && (
         <div
@@ -460,6 +598,21 @@ export default function ReceptionistDashboard() {
                   required
                   placeholder="+20 100 123 4567"
                 />
+              </label>
+
+              <label className="field">
+                <span>Gender</span>
+                <select
+                  value={bookFormData.gender}
+                  onChange={(e) =>
+                    setBookFormData({ ...bookFormData, gender: e.target.value })
+                  }
+                  required
+                >
+                  <option value="">Select Gender</option>
+                  <option value="Male">Male</option>
+                  <option value="Female">Female</option>
+                </select>
               </label>
 
               <label className="field">
@@ -753,7 +906,7 @@ export default function ReceptionistDashboard() {
                               handleCheckIn(appt.id);
                             }}
                           >
-                            Check in
+                            Confirm
                           </button>
                         )}
                       </div>
@@ -772,3 +925,4 @@ export default function ReceptionistDashboard() {
     </div>
   );
 }
+
