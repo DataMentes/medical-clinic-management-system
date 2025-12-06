@@ -363,19 +363,25 @@ class DoctorController {
         });
       }
 
+      // Use UTC dates to match database storage
       const today = new Date();
-      today.setHours(0, 0, 0, 0);
+      const todayUTC = new Date(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate()));
+      
+      const tomorrowUTC = new Date(todayUTC);
+      tomorrowUTC.setUTCDate(tomorrowUTC.getUTCDate() + 1);
 
-      const tomorrow = new Date(today);
-      tomorrow.setDate(tomorrow.getDate() + 1);
+      console.log('📅 Doctor Today Appointments Query:');
+      console.log('Doctor ID:', person.doctor.id);
+      console.log('Today (UTC):', todayUTC.toISOString());
+      console.log('Tomorrow (UTC):', tomorrowUTC.toISOString());
 
       // Get confirmed appointments for today
       const appointments = await prisma.appointment.findMany({
         where: {
           doctorId: person.doctor.id,
           appointmentDate: {
-            gte: today,
-            lt: tomorrow
+            gte: todayUTC,
+            lt: tomorrowUTC
           },
           status: { in: ['Pending', 'Confirmed'] }
         },
@@ -397,6 +403,11 @@ class DoctorController {
             startTime: 'asc'
           }
         }
+      });
+
+      console.log('✅ Found appointments:', appointments.length);
+      appointments.forEach(apt => {
+        console.log(`  - ID: ${apt.id}, Date: ${apt.appointmentDate.toISOString()}, Patient: ${apt.patient.person.fullName}`);
       });
 
       return res.json({

@@ -7,24 +7,24 @@ const PATIENTS_IN_CLINIC_KEY = "patientsInClinicNow";
 const APPOINTMENTS_KEY = "adminAppointmentsData";
 const DOCTORS_KEY = "doctorsData";
 
-const initialTodayAppointments = [
-  {
-    id: 1,
-    time: "09:00",
-    patient: "Sarah Ahmed",
-    reason: "Routine examination",
-    type: "Examination",
-    status: "Scheduled"
-  },
-  {
-    id: 2,
-    time: "10:30",
-    patient: "Mohamed Ali",
-    reason: "Follow-up consultation",
-    type: "Consultation",
-    status: "Scheduled"
-  }
-];
+  const initialTodayAppointments = [
+    {
+      id: 1,
+      time: "09:00",
+      patient: "Sarah Ahmed",
+      reason: "Routine examination",
+      type: "Examination",
+      status: "Scheduled"
+    },
+    {
+      id: 2,
+      time: "10:30",
+      patient: "Mohamed Ali",
+      reason: "Follow-up consultation",
+      type: "Consultation",
+      status: "Scheduled"
+    }
+  ];
 
 const initialWeeklySchedule = [
   { day: "Mon", start: "09:00", end: "15:00", max: 12 },
@@ -134,14 +134,24 @@ export default function DoctorDashboard() {
         console.log('✅ API Response:', response);
         if (response.data && Array.isArray(response.data)) {
           console.log('📅 Appointments fetched:', response.data.length);
-          const formatted = response.data.map(apt => ({
-            id: apt.id,
-            time: apt.schedule?.startTime || '00:00',
-            patient: apt.patient?.person?.fullName || 'Unknown',
-            reason: apt.appointmentType || 'Appointment',
-            type: apt.appointmentType || 'Examination',
-            status: apt.status || 'Pending'
-          }));
+          const formatted = response.data.map(apt => {
+            // Format time from DateTime string (e.g., "1970-01-01T09:00:00.000Z" -> "09:00")
+            let timeStr = '00:00';
+            if (apt.schedule?.startTime) {
+              const timeObj = new Date(apt.schedule.startTime);
+              timeStr = timeObj.toISOString().substring(11, 16);
+            }
+            
+            return {
+              id: apt.id,
+              time: timeStr,
+              patient: apt.patient?.person?.fullName || 'Unknown',
+              reason: apt.appointmentType || 'Appointment',
+              type: apt.appointmentType || 'Examination',
+              status: apt.status || 'Pending'
+            };
+          });
+          console.log('📋 Formatted appointments:', formatted);
           setTodayAppointments(formatted);
         }
       } catch (error) {
