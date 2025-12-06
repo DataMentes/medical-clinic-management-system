@@ -12,6 +12,12 @@ export const doctorService = {
         return result.data;
     },
 
+    // ===== Rooms =====
+    getRooms: async () => {
+        const result = await api.get('/doctor/rooms');
+        return result.data;
+    },
+
     // ===== Profile =====
     getProfile: async () => {
         const result = await api.get('/doctor/profile');

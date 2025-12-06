@@ -7,6 +7,10 @@ const authMiddleware = require('../middlewares/auth.middleware');
 router.use(authMiddleware.authenticate);
 router.use(authMiddleware.isDoctor);
 
+// ===== Rooms =====
+// Get all available rooms
+router.get('/rooms', doctorController.getRooms);
+
 // ===== Schedule Management =====
 // Get my weekly schedule
 router.get('/schedule', doctorController.getMySchedule);

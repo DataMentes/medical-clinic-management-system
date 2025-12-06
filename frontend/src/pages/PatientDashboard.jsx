@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { patientService } from "../api/patientService";
 
 export default function PatientDashboard() {
+  const navigate = useNavigate();
   const [upcomingAppointments, setUpcomingAppointments] = useState([]);
   const [pastAppointments, setPastAppointments] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -9,36 +11,46 @@ export default function PatientDashboard() {
   useEffect(() => {
     const fetchDashboardData = async () => {
       try {
-        const data = await patientService.getDashboard();
+        const [dashboardData, pastData] = await Promise.all([
+            patientService.getDashboard(),
+            patientService.getPastAppointments()
+        ]);
 
         // Format upcoming appointments
-        const upcoming = data.upcomingAppointments.map(appt => ({
-          id: appt.id,
-          date: new Date(appt.appointmentDate).toLocaleDateString('en-US', {
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit'
-          }) + ' · ' + appt.appointmentTime,
-          doctor: appt.doctor.user.fullName,
-          type: appt.type === 'EXAMINATION' ? 'Examination' : 'Consultation',
-          status: appt.status === 'CONFIRMED' ? 'Confirmed' : appt.status === 'PENDING' ? 'Pending' : 'Checked In'
-        }));
+        if (dashboardData && dashboardData.upcomingAppointments) {
+            const upcoming = dashboardData.upcomingAppointments.map(appt => ({
+            id: appt.id,
+            date: new Date(appt.appointmentDate).toLocaleDateString('en-US', {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric'
+            }) + ' · ' + (appt.schedule?.startTime ? new Date(appt.schedule.startTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : appt.appointmentTime || 'N/A'),
+            doctor: appt.doctor?.person?.fullName || 'Unknown Doctor',
+            specialty: appt.doctor?.specialty?.name || 'General',
+            type: appt.appointmentType,
+            status: appt.status // Status is already Title Case from Enum (Pending, Confirmed)
+            }));
+            setUpcomingAppointments(upcoming);
+        }
 
         // Format past appointments
-        const past = data.pastAppointments.map(appt => ({
-          id: appt.id,
-          date: new Date(appt.appointmentDate).toLocaleDateString('en-US', {
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit'
-          }),
-          doctor: appt.doctor.user.fullName,
-          type: appt.type === 'EXAMINATION' ? 'Examination' : 'Consultation',
-          notes: appt.notes || 'Completed visit.'
-        }));
+        if (pastData && Array.isArray(pastData)) {
+            const past = pastData.map(appt => ({
+            id: appt.id,
+            date: new Date(appt.appointmentDate).toLocaleDateString('en-US', {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric'
+            }),
+            doctor: appt.doctor?.person?.fullName || 'Unknown Doctor',
+            specialty: appt.doctor?.specialty?.name || 'General',
+            type: appt.appointmentType,
+            status: appt.status,
+            notes: appt.medicalRecord?.length > 0 ? appt.medicalRecord[0].diagnosis : (appt.notes || 'No notes available')
+            }));
+            setPastAppointments(past);
+        }
 
-        setUpcomingAppointments(upcoming);
-        setPastAppointments(past);
       } catch (error) {
         console.error('Failed to fetch patient dashboard:', error);
       } finally {
@@ -81,6 +93,7 @@ export default function PatientDashboard() {
       </header>
 
       <section className="grid-2">
+        {/* Card 1: Upcoming Appointments */}
         <div className="card">
           <h3>Upcoming Appointments</h3>
           <ul className="list">
@@ -88,15 +101,29 @@ export default function PatientDashboard() {
               <li key={appt.id} className="list-item">
                 <div className="list-title">{appt.date}</div>
                 <div className="list-subtitle">
-                  {appt.doctor} · {appt.type}
+                  {appt.doctor} · {appt.specialty} · {appt.type}
                 </div>
-                <div className="badge">{appt.status}</div>
-                <button
-                  className="btn-tertiary"
-                  onClick={() => handleCancel(appt.id)}
-                >
-                  Cancel
-                </button>
+                <div className="badge" style={{ 
+                  backgroundColor: appt.status === 'Confirmed' ? '#dcfce7' : '#fef9c3', 
+                  color: appt.status === 'Confirmed' ? '#166534' : '#854d0e',
+                  display: 'inline-block', padding: '0.2rem 0.5rem', borderRadius: '4px', fontSize: '0.8rem', marginTop: '0.25rem'
+                }}>
+                  {appt.status}
+                </div>
+                {appt.status !== 'Confirmed' && appt.status !== 'Completed' && (
+                  <button
+                    className="btn-tertiary"
+                    onClick={() => handleCancel(appt.id)}
+                    style={{ marginTop: '0.5rem', width: '100%', textAlign: 'center' }}
+                  >
+                    Cancel
+                  </button>
+                )}
+                 {appt.status === 'Confirmed' && (
+                  <div style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '0.5rem', fontStyle: 'italic' }}>
+                    Contact clinic to cancel
+                  </div>
+                )}
               </li>
             ))}
             {upcomingAppointments.length === 0 && (
@@ -105,16 +132,17 @@ export default function PatientDashboard() {
           </ul>
         </div>
 
+        {/* Card 2: Past Appointments */}
         <div className="card">
           <h3>Past Appointments</h3>
           <ul className="list">
             {pastAppointments.map((appt) => (
               <li key={appt.id} className="list-item">
                 <div className="list-title">
-                  {appt.date} · {appt.type}
+                  {appt.date} · {appt.specialty}
                 </div>
                 <div className="list-subtitle">{appt.doctor}</div>
-                <p className="muted">{appt.notes}</p>
+                <p className="muted" style={{ fontSize: '0.9rem', marginTop: '0.25rem' }}>Notes: {appt.notes}</p>
               </li>
             ))}
             {pastAppointments.length === 0 && (
@@ -122,6 +150,35 @@ export default function PatientDashboard() {
             )}
           </ul>
         </div>
+
+        {/* Card 3: Quick Actions - Book Appointment */}
+        <div className="card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', textAlign: 'center', padding: '2rem' }}>
+          <div style={{ fontSize: '2rem', marginBottom: '1rem' }}>📅</div>
+          <h3>Book New Appointment</h3>
+          <p style={{ color: 'var(--text-soft)', marginBottom: '1.5rem' }}>Schedule a new visit with one of our specialists.</p>
+          <button 
+            className="btn-primary" 
+            onClick={() => navigate('/book-appointment')}
+            style={{ width: '100%' }}
+          >
+            Book Now
+          </button>
+        </div>
+
+         {/* Card 4: Quick Actions - Medical Records */}
+         <div className="card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', textAlign: 'center', padding: '2rem' }}>
+          <div style={{ fontSize: '2rem', marginBottom: '1rem' }}>📋</div>
+          <h3>Medical History</h3>
+          <p style={{ color: 'var(--text-soft)', marginBottom: '1.5rem' }}>View your complete medical records and prescriptions.</p>
+          <button 
+            className="btn-secondary" 
+            onClick={() => navigate('/medical-history')}
+            style={{ width: '100%' }}
+          >
+            View Records
+          </button>
+        </div>
+
       </section>
     </div>
   );

@@ -3,21 +3,35 @@ import { useState, useEffect } from "react";
 
 const allNavItems = {
   patient: [
+    { to: "/patient-dashboard", label: "Dashboard" },
+    { to: "/book-appointment", label: "Book Appointment" },
+    { to: "/medical-history", label: "Medical History" },
     { to: "/patient-settings", label: "Settings" }
   ],
   doctor: [
+    { to: "/doctor-dashboard", label: "Dashboard" },
     { to: "/doctor-settings", label: "Settings" }
   ],
   Admin: [
+    { to: "/admin-dashboard", label: "Dashboard" },
+    { to: "/manage-doctors", label: "Doctors" },
+    { to: "/manage-patients", label: "Patients" },
+    { to: "/manage-appointments", label: "Appointments" },
     { to: "/admin-settings", label: "Settings" }
   ],
   admin: [
+    { to: "/admin-dashboard", label: "Dashboard" },
+    { to: "/manage-doctors", label: "Doctors" },
+    { to: "/manage-patients", label: "Patients" },
+    { to: "/manage-appointments", label: "Appointments" },
     { to: "/admin-settings", label: "Settings" }
   ],
   Receptionist: [
+    { to: "/receptionist-dashboard", label: "Dashboard" },
     { to: "/receptionist-settings", label: "Settings" }
   ],
   receptionist: [
+    { to: "/receptionist-dashboard", label: "Dashboard" },
     { to: "/receptionist-settings", label: "Settings" }
   ]
 };

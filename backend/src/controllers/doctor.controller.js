@@ -2,6 +2,26 @@ const prisma = require('../config/database');
 
 class DoctorController {
   /**
+   * Get all available rooms
+   * @route GET /api/doctor/rooms
+   */
+  async getRooms(req, res, next) {
+    try {
+      const rooms = await prisma.room.findMany({
+        orderBy: { roomName: 'asc' }
+      });
+
+      return res.json({
+        success: true,
+        data: rooms
+      });
+    } catch (error) {
+      console.error('Get rooms error:', error);
+      next(error);
+    }
+  }
+
+  /**
    * Get my weekly schedule
    * @route GET /api/doctor/schedule
    */
@@ -33,9 +53,15 @@ class DoctorController {
         }
       });
 
+      const formattedSchedules = schedules.map(s => ({
+        ...s,
+        startTime: s.startTime.toISOString().substring(11, 16),
+        endTime: s.endTime.toISOString().substring(11, 16)
+      }));
+
       return res.json({
         success: true,
-        data: schedules
+        data: formattedSchedules
       });
     } catch (error) {
       console.error('Get schedule error:', error);
@@ -75,22 +101,11 @@ class DoctorController {
 
       const doctorId = person.doctor.id;
 
-      // Check if doctor already has schedule for this day
-      const existingSchedule = await prisma.doctorSchedule.findFirst({
-        where: {
-          doctorId,
-          weekDay
-        }
-      });
+      // Convert time strings to DateTime for Prisma Time fields
+      const startDateTime = new Date(`1970-01-01T${startTime}:00.000Z`);
+      const endDateTime = new Date(`1970-01-01T${endTime}:00.000Z`);
 
-      if (existingSchedule) {
-        return res.status(409).json({
-          success: false,
-          error: `You already have a schedule for ${weekDay}`
-        });
-      }
-
-      // Check room availability for this day and time
+      // Check room availability for this day and time (allow multiple schedules per day)
       const conflictingRoomSchedule = await prisma.doctorSchedule.findFirst({
         where: {
           roomId: parseInt(roomId),
@@ -98,14 +113,14 @@ class DoctorController {
           OR: [
             {
               AND: [
-                { startTime: { lte: startTime } },
-                { endTime: { gt: startTime } }
+                { startTime: { lte: startDateTime } },
+                { endTime: { gt: startDateTime } }
               ]
             },
             {
               AND: [
-                { startTime: { lt: endTime } },
-                { endTime: { gte: endTime } }
+                { startTime: { lt: endDateTime } },
+                { endTime: { gte: endDateTime } }
               ]
             }
           ]
@@ -125,8 +140,8 @@ class DoctorController {
           doctorId,
           weekDay,
           roomId: parseInt(roomId),
-          startTime,
-          endTime,
+          startTime: startDateTime,
+          endTime: endDateTime,
           maxCapacity: parseInt(maxCapacity)
         },
         include: {
@@ -188,11 +203,15 @@ class DoctorController {
         });
       }
 
+      // Convert time strings to DateTime if provided
+      const startDateTime = startTime ? new Date(`1970-01-01T${startTime}:00.000Z`) : null;
+      const endDateTime = endTime ? new Date(`1970-01-01T${endTime}:00.000Z`) : null;
+
       // If changing room or time, check for conflicts
-      if (roomId || startTime || endTime) {
+      if (roomId || startDateTime || endDateTime) {
         const newRoomId = roomId ? parseInt(roomId) : schedule.roomId;
-        const newStartTime = startTime || schedule.startTime;
-        const newEndTime = endTime || schedule.endTime;
+        const newStartTime = startDateTime || schedule.startTime;
+        const newEndTime = endDateTime || schedule.endTime;
 
         const conflictingSchedule = await prisma.doctorSchedule.findFirst({
           where: {
@@ -225,14 +244,15 @@ class DoctorController {
       }
 
       // Update schedule
+      const updateData = {};
+      if (roomId) updateData.roomId = parseInt(roomId);
+      if (startDateTime) updateData.startTime = startDateTime;
+      if (endDateTime) updateData.endTime = endDateTime;
+      if (maxCapacity) updateData.maxCapacity = parseInt(maxCapacity);
+
       const updatedSchedule = await prisma.doctorSchedule.update({
         where: { id: parseInt(scheduleId) },
-        data: {
-          ...(roomId && { roomId: parseInt(roomId) }),
-          ...(startTime && { startTime }),
-          ...(endTime && { endTime }),
-          ...(maxCapacity && { maxCapacity: parseInt(maxCapacity) })
-        },
+        data: updateData,
         include: {
           room: true
         }
@@ -1107,8 +1127,7 @@ class DoctorController {
             select: {
               fullName: true,
               phoneNumber: true,
-              gender: true,
-              dateOfBirth: true
+              gender: true
             }
           }
         }
@@ -1155,7 +1174,9 @@ class DoctorController {
           }
         },
         orderBy: {
-          createdAt: 'desc'
+          appointment: {
+            appointmentDate: 'desc'
+          }
         }
       });
 
