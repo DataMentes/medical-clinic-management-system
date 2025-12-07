@@ -58,3 +58,52 @@ export async function getRooms() {
     throw error;
   }
 }
+
+/**
+ * Get appointments for week
+ * @param {string} startDate YYYY-MM-DD
+ * @returns {Promise<Object>} Week appointments
+ */
+export async function getWeekAppointments(startDate) {
+  try {
+    const params = startDate ? { startDate } : {};
+    const response = await apiClient.get('/doctor/appointments/week', { params });
+    console.log('📅 Doctor Week Appointments Response:', response);
+    return response;
+  } catch (error) {
+    console.error('❌ Error fetching week appointments:', error);
+    throw error;
+  }
+}
+/**
+ * Get appointment details with history
+ * @param {number} id Appointment ID
+ * @returns {Promise<Object>} Appointment details
+ */
+export async function getAppointmentDetails(id) {
+  try {
+    const response = await apiClient.get(`/doctor/appointments/${id}`);
+    console.log('🩺 Appointment Details Response:', response);
+    return response;
+  } catch (error) {
+    console.error('❌ Error fetching appointment details:', error);
+    throw error;
+  }
+}
+
+/**
+ * Add medical record
+ * @param {number} appointmentId 
+ * @param {Object} data { diagnosis, prescription, notes }
+ * @returns {Promise<Object>} Created record
+ */
+export async function addMedicalRecord(appointmentId, data) {
+  try {
+    const response = await apiClient.post(`/doctor/appointments/${appointmentId}/medical-record`, data);
+    console.log('📝 Add Medical Record Response:', response);
+    return response;
+  } catch (error) {
+    console.error('❌ Error adding medical record:', error);
+    throw error;
+  }
+}

@@ -26,14 +26,6 @@ const DOCTORS_KEY = "doctorsData";
     }
   ];
 
-const initialWeeklySchedule = [
-  { day: "Mon", start: "09:00", end: "15:00", max: 12 },
-  { day: "Tue", start: "10:00", end: "16:00", max: 10 },
-  { day: "Wed", start: "09:00", end: "14:00", max: 8 },
-  { day: "Thu", start: "11:00", end: "17:00", max: 10 },
-  { day: "Fri", start: "09:00", end: "13:00", max: 6 }
-];
-
 const mockRooms = [
   { id: 1, roomName: "Room 101" },
   { id: 2, roomName: "Room 102" },
@@ -51,7 +43,9 @@ export default function DoctorDashboard() {
   const [todayAppointments, setTodayAppointments] = useState(
     initialTodayAppointments
   );
-  const [weeklySchedule] = useState(initialWeeklySchedule);
+
+  const [weeklySchedule, setWeeklySchedule] = useState([]);
+  const [weeklyAppointments, setWeeklyAppointments] = useState({});
   const [slots, setSlots] = useState(initialSlots);
   const [rooms] = useState(mockRooms);
   const [newSlot, setNewSlot] = useState({ day: "Mon", startTime: "", endTime: "", roomId: "", capacity: 1 });
@@ -127,21 +121,19 @@ export default function DoctorDashboard() {
       }
     }
 
-    // Fetch today's appointments from API
-    async function fetchAppointments() {
+    // Fetch data from API
+    async function fetchData() {
       try {
-        const response = await doctorApi.getTodayAppointments();
-        console.log('✅ API Response:', response);
-        if (response.data && Array.isArray(response.data)) {
-          console.log('📅 Appointments fetched:', response.data.length);
-          const formatted = response.data.map(apt => {
-            // Format time from DateTime string (e.g., "1970-01-01T09:00:00.000Z" -> "09:00")
+        // 1. Fetch Today's Appointments
+        const todayResponse = await doctorApi.getTodayAppointments();
+        if (todayResponse.data && Array.isArray(todayResponse.data)) {
+          console.log('📅 Today Appointments fetched:', todayResponse.data.length);
+          const formatted = todayResponse.data.map(apt => {
             let timeStr = '00:00';
             if (apt.schedule?.startTime) {
               const timeObj = new Date(apt.schedule.startTime);
               timeStr = timeObj.toISOString().substring(11, 16);
             }
-            
             return {
               id: apt.id,
               time: timeStr,
@@ -151,15 +143,36 @@ export default function DoctorDashboard() {
               status: apt.status || 'Pending'
             };
           });
-          console.log('📋 Formatted appointments:', formatted);
           setTodayAppointments(formatted);
         }
+
+        // 2. Fetch Recurrent Schedule
+        const scheduleResponse = await doctorApi.getWeeklySchedule();
+        if (scheduleResponse.data && Array.isArray(scheduleResponse.data)) {
+          console.log('� Weekly Schedule fetched:', scheduleResponse.data.length);
+          const formattedSchedule = scheduleResponse.data.map(s => ({
+            day: s.weekDay,
+            start: s.startTime.substring(0, 5),
+            end: s.endTime.substring(0, 5),
+            max: s.maxCapacity
+          }));
+          setWeeklySchedule(formattedSchedule);
+        }
+
+        // 3. Fetch Week Appointments
+        // Fetch from today onwards (API defaults to this week if no date provided, but let's be safe)
+        const weekResponse = await doctorApi.getWeekAppointments();
+        if (weekResponse.data?.appointments) {
+            console.log('🗓️ Week Appointments fetched:', Object.keys(weekResponse.data.appointments).length);
+            setWeeklyAppointments(weekResponse.data.appointments);
+        }
+
       } catch (error) {
-        console.error('❌ Error fetching appointments:', error);
+        console.error('❌ Error fetching dashboard data:', error);
       }
     }
 
-    fetchAppointments();
+    fetchData();
   }, []);
 
   // تحديث قائمة المرضى داخل العيادة
@@ -250,7 +263,7 @@ export default function DoctorDashboard() {
     if (!newAppointment.time || !newAppointment.patient) return;
 
     const id = Date.now();
-    const status = newAppointment.checkedIn ? "Checked-In" : "Scheduled";
+    const status = newAppointment.checkedIn ? "Confirmed" : "Scheduled";
 
     setTodayAppointments((prev) => [
       ...prev,
@@ -279,7 +292,7 @@ export default function DoctorDashboard() {
         time: last.time || "",
         patient: last.patient || "",
         type: last.type || "Examination",
-        checkedIn: last.status === "Checked-In"
+        checkedIn: last.status === "Confirmed"
       });
       setShowEditForm(true);
       return prev;
@@ -295,7 +308,7 @@ export default function DoctorDashboard() {
         time: selected.time || "",
         patient: selected.patient || "",
         type: selected.type || "Examination",
-        checkedIn: selected.status === "Checked-In"
+        checkedIn: selected.status === "Confirmed"
       });
     }
   };
@@ -313,7 +326,7 @@ export default function DoctorDashboard() {
     if (!editingAppointmentId || !editAppointment.time || !editAppointment.patient)
       return;
 
-    const status = editAppointment.checkedIn ? "Checked-In" : "Scheduled";
+    const status = editAppointment.checkedIn ? "Confirmed" : "Scheduled";
     const reason =
       editAppointment.type === "Consultation"
         ? "Consultation (manual)"
@@ -371,21 +384,38 @@ export default function DoctorDashboard() {
   );
   const maxPatientsToday = todaySchedule ? todaySchedule.max : todayAppointments.length || 1;
   const checkedInCount = todayAppointments.filter(
-    (appt) => appt.status === "Checked-In"
+    (appt) => appt.status === "Confirmed"
   ).length;
 
   const getAppointmentsForSchedule = (schedule) => {
+    // Determine the actual date of this displayed schedule card
     const dateObj = schedule.dateObj || getDateForDayLabel(schedule.day);
+    if (!dateObj) return [];
+    
+    // Check key in weeklyAppointments map
     const dateKey = dateObj.toISOString().split("T")[0];
+    const dayAppointments = weeklyAppointments[dateKey] || [];
 
-    return todayAppointments.filter((appt) => {
-      const apptDate =
-        appt.date ||
-        todayDate.toISOString().split("T")[0]; // fallback لو البيانات القديمة
-      if (apptDate !== dateKey) return false;
-      if (!appt.time) return false;
-      return appt.time >= schedule.start && appt.time <= schedule.end;
-    });
+    // Filter appointments that fall within this slot's time range
+    // Note: The API 'booked' appointments already belong to a specific schedule,
+    // but we might have multiple slots per day.
+    return dayAppointments
+      .filter((appt) => {
+        let timeStr = '00:00';
+        // Handle different time formats if necessary
+        if (appt.schedule?.startTime) {
+           timeStr = new Date(appt.schedule.startTime).toISOString().substring(11, 16);
+        }
+        return timeStr >= schedule.start && timeStr <= schedule.end;
+      })
+      .map(appt => ({
+          id: appt.id,
+          time: new Date(appt.schedule.startTime).toISOString().substring(11, 16),
+          patient: appt.patient?.person?.fullName || 'Unknown',
+          reason: appt.appointmentType,
+          type: appt.appointmentType,
+          status: appt.status
+      }));
   };
 
   const todayISO = todayDate.toISOString().split("T")[0];
@@ -429,14 +459,11 @@ export default function DoctorDashboard() {
               </p>
             </div>
             <div style={{ textAlign: "right" }}>
-              <div style={{ fontSize: "1.4rem", fontWeight: 600 }}>
-                {todayAppointments.length} / {maxPatientsToday}
-              </div>
-              <p className="muted" style={{ margin: 0, fontSize: "0.9rem" }}>
-                Today's capacity
+              <p className="muted" style={{ margin: 0, fontSize: "0.85rem" }}>
+                Total Patients: {todayAppointments.length}
               </p>
               <p className="muted" style={{ margin: 0, fontSize: "0.85rem" }}>
-                Checked-in: {checkedInCount}
+                Confirmed: {checkedInCount}
               </p>
             </div>
           </div>
@@ -455,21 +482,19 @@ export default function DoctorDashboard() {
                         </div>
                         <div className="list-subtitle" style={{ display: "flex", gap: "0.5rem" }}>
                           <span>{a.type}</span>
-                          <span>•</span>
-                          <span>{a.reason}</span>
                         </div>
                       </div>
                       <span
                         className="pill"
                         style={{
                           background:
-                            a.status === "Checked-In"
+                            a.status === "Confirmed"
                               ? "rgba(34, 197, 94, 0.2)"
                               : "var(--accent-soft)",
-                          color: a.status === "Checked-In" ? "#22c55e" : "#e0edff"
+                          color: a.status === "Confirmed" ? "#22c55e" : "#e0edff"
                         }}
                       >
-                        {a.status === "Checked-In" ? "Checked-In" : "Waiting"}
+                        {a.status === "Confirmed" ? "Confirmed" : "Pending"}
                       </span>
                     </li>
                   ))}
@@ -565,25 +590,25 @@ export default function DoctorDashboard() {
                                     {appt.time} · {appt.patient}
                                   </div>
                                   <div className="list-subtitle">
-                                    {appt.type} · {appt.reason}
+                                    {appt.type}
                                   </div>
                                 </div>
                                 <span
                                   className="pill"
                                   style={{
                                     background:
-                                      appt.status === "Checked-In"
+                                      appt.status === "Confirmed"
                                         ? "rgba(34, 197, 94, 0.2)"
                                         : "var(--accent-soft)",
                                     color:
-                                      appt.status === "Checked-In"
+                                      appt.status === "Confirmed"
                                         ? "#22c55e"
                                         : "#e0edff"
                                   }}
                                 >
-                                  {appt.status === "Checked-In"
-                                    ? "Checked-In"
-                                    : "Waiting"}
+                                  {appt.status === "Confirmed"
+                                    ? "Confirmed"
+                                    : "Pending"}
                                 </span>
                               </li>
                             ))}
@@ -732,7 +757,7 @@ export default function DoctorDashboard() {
               </li>
             ))}
             {patientsInClinic.length === 0 && (
-              <li className="list-empty">No checked-in patients.</li>
+              <li className="list-empty">No Confirmed patients.</li>
             )}
           </ul>
         </div>
@@ -804,7 +829,7 @@ export default function DoctorDashboard() {
                   onChange={handleAddFormChange}
                   style={{ width: "auto" }}
                 />
-                <span>Marked as checked-in</span>
+                <span>Marked as Confirmed</span>
               </label>
               <div style={{ display: "flex", gap: "0.75rem", marginTop: "1.5rem" }}>
                 <button
@@ -915,7 +940,7 @@ export default function DoctorDashboard() {
                   onChange={handleEditFormChange}
                   style={{ width: "auto" }}
                 />
-                <span>Marked as checked-in</span>
+                <span>Marked as Confirmed</span>
               </label>
               <div style={{ display: "flex", gap: "0.75rem", marginTop: "1.5rem" }}>
                 <button
