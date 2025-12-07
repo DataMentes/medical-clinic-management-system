@@ -1,3 +1,4 @@
+// app.js
 const express = require('express');
 const cors = require('cors');
 const { errorHandler, notFoundHandler } = require('./middlewares/error.middleware');
@@ -26,16 +27,22 @@ app.use('/api/admin', require('./routes/admin.routes'));
 
 
 
-// // dist run
-// app.use(express.static(path.join(__dirname, 'dist')));
-// app.get('*', (req, res) => {
-//   res.sendFile(path.join(__dirname, 'dist', 'index.html'));
-// });
-
 // Health check
-app.get('/', (req, res) => {
+app.get('/test', (req, res) => {
   res.json({ status: 'ok', message: 'Server is running' });
 });
+const path = require('path');
+
+// Serve React build files
+app.use(express.static(path.join(__dirname, '../dist')));
+
+// Handle React routing for non-API routes
+
+app.get(/^\/(?!api).*/, (req, res) => {
+  res.sendFile(path.join(__dirname, '../dist', 'index.html'));
+});
+
+
 
 // 404 handler - Must be after all routes
 app.use(notFoundHandler);

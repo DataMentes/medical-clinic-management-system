@@ -1,3 +1,5 @@
+
+// server.js
 require('dotenv').config();
 const app = require('./app');
 const { initializeJobs } = require('./jobs/cleanup.jobs');
