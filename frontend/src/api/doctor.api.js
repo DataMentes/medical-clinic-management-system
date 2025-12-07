@@ -100,10 +100,39 @@ export async function getAppointmentDetails(id) {
 export async function addMedicalRecord(appointmentId, data) {
   try {
     const response = await apiClient.post(`/doctor/appointments/${appointmentId}/medical-record`, data);
-    console.log('📝 Add Medical Record Response:', response);
     return response;
   } catch (error) {
-    console.error('❌ Error adding medical record:', error);
+    throw error;
+  }
+}
+
+/**
+ * Add new schedule slot
+ * @param {Object} data { weekDay, roomId, startTime, endTime, maxCapacity }
+ * @returns {Promise<Object>} Created schedule
+ */
+export async function addSchedule(data) {
+  try {
+    const response = await apiClient.post('/doctor/schedule', data);
+    return response;
+  } catch (error) {
+    console.error('❌ Error adding schedule:', error);
+    throw error;
+  }
+}
+
+/**
+ * Delete schedule slot
+ * @param {number} scheduleId 
+ * @returns {Promise<Object>} Delete confirmation
+ */
+export async function deleteSchedule(scheduleId) {
+  try {
+    const response = await apiClient.delete(`/doctor/schedule/${scheduleId}`);
+    console.log('🗑️ Delete Schedule Response:', response);
+    return response;
+  } catch (error) {
+    console.error('❌ Error deleting schedule:', error);
     throw error;
   }
 }

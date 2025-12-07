@@ -16,7 +16,7 @@ class DoctorController {
         data: rooms
       });
     } catch (error) {
-      console.error('Get rooms error:', error);
+      
       next(error);
     }
   }
@@ -64,7 +64,7 @@ class DoctorController {
         data: formattedSchedules
       });
     } catch (error) {
-      console.error('Get schedule error:', error);
+      
       next(error);
     }
   }
@@ -155,7 +155,7 @@ class DoctorController {
         data: schedule
       });
     } catch (error) {
-      console.error('Add schedule error:', error);
+      
       next(error);
     }
   }
@@ -264,7 +264,7 @@ class DoctorController {
         data: updatedSchedule
       });
     } catch (error) {
-      console.error('Update schedule error:', error);
+      
       next(error);
     }
   }
@@ -337,7 +337,7 @@ class DoctorController {
         message: 'Schedule deleted successfully'
       });
     } catch (error) {
-      console.error('Delete schedule error:', error);
+      
       next(error);
     }
   }
@@ -370,10 +370,10 @@ class DoctorController {
       const tomorrowUTC = new Date(todayUTC);
       tomorrowUTC.setUTCDate(tomorrowUTC.getUTCDate() + 1);
 
-      console.log('📅 Doctor Today Appointments Query:');
-      console.log('Doctor ID:', person.doctor.id);
-      console.log('Today (UTC):', todayUTC.toISOString());
-      console.log('Tomorrow (UTC):', tomorrowUTC.toISOString());
+      
+      
+      
+      
 
       // Get confirmed appointments for today
       const appointments = await prisma.appointment.findMany({
@@ -405,9 +405,9 @@ class DoctorController {
         }
       });
 
-      console.log('✅ Found appointments:', appointments.length);
+      
       appointments.forEach(apt => {
-        console.log(`  - ID: ${apt.id}, Date: ${apt.appointmentDate.toISOString()}, Patient: ${apt.patient.person.fullName}`);
+        
       });
 
       return res.json({
@@ -415,7 +415,7 @@ class DoctorController {
         data: appointments
       });
     } catch (error) {
-      console.error('Get today appointments error:', error);
+      
       next(error);
     }
   }
@@ -488,7 +488,7 @@ class DoctorController {
         data: updated
       });
     } catch (error) {
-      console.error('Update appointment error:', error);
+      
       next(error);
     }
   }
@@ -515,12 +515,12 @@ class DoctorController {
         });
       }
 
-      // Calculate week range
+      // Calculate week range (8 days to include full week from today till next Saturday)
       const weekStart = startDate ? new Date(startDate) : new Date();
       weekStart.setHours(0, 0, 0, 0);
       
       const weekEnd = new Date(weekStart);
-      weekEnd.setDate(weekEnd.getDate() + 7);
+      weekEnd.setDate(weekEnd.getDate() + 8); // Changed from 7 to 8 to include the 7th day fully
 
       const appointments = await prisma.appointment.findMany({
         where: {
@@ -549,6 +549,13 @@ class DoctorController {
         ]
       });
 
+      
+      
+      
+      appointments.forEach(apt => {
+        
+      });
+
       // Group by date
       const groupedByDate = appointments.reduce((acc, apt) => {
         const dateKey = apt.appointmentDate.toISOString().split('T')[0];
@@ -568,7 +575,7 @@ class DoctorController {
         }
       });
     } catch (error) {
-      console.error('Get week appointments error:', error);
+      
       next(error);
     }
   }
@@ -666,7 +673,7 @@ class DoctorController {
         }
       });
     } catch (error) {
-      console.error('Get appointment details error:', error);
+      
       next(error);
     }
   }
@@ -761,7 +768,7 @@ class DoctorController {
         data: result
       });
     } catch (error) {
-      console.error('Add medical record error:', error);
+      
       next(error);
     }
   }
@@ -818,7 +825,7 @@ class DoctorController {
         }
       });
     } catch (error) {
-      console.error('Get profile error:', error);
+      
       next(error);
     }
   }
@@ -867,7 +874,7 @@ class DoctorController {
         }
       });
     } catch (error) {
-      console.error('Update phone error:', error);
+      
       next(error);
     }
   }
@@ -925,7 +932,7 @@ class DoctorController {
         message: 'Password updated successfully'
       });
     } catch (error) {
-      console.error('Update password error:', error);
+      
       next(error);
     }
   }
@@ -1036,7 +1043,7 @@ class DoctorController {
       });
       
     } catch (error) {
-      console.error('Doctor dashboard error:', error);
+      
       next(error);
     }
   }
@@ -1103,7 +1110,7 @@ class DoctorController {
       });
       
     } catch (error) {
-      console.error('Patients in clinic error:', error);
+      
       next(error);
     }
   }
@@ -1200,7 +1207,7 @@ class DoctorController {
       });
       
     } catch (error) {
-      console.error('Get patient medical history error:', error);
+      
       next(error);
     }
   }

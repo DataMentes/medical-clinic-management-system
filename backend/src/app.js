@@ -24,6 +24,14 @@ app.use('/api/doctor', require('./routes/doctor.routes'));
 app.use('/api/reception', require('./routes/reception.routes'));
 app.use('/api/admin', require('./routes/admin.routes'));
 
+
+
+// // dist run
+// app.use(express.static(path.join(__dirname, 'dist')));
+// app.get('*', (req, res) => {
+//   res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+// });
+
 // Health check
 app.get('/', (req, res) => {
   res.json({ status: 'ok', message: 'Server is running' });

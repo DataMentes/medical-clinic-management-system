@@ -47,7 +47,7 @@ export default function DoctorDashboard() {
   const [weeklySchedule, setWeeklySchedule] = useState([]);
   const [weeklyAppointments, setWeeklyAppointments] = useState({});
   const [slots, setSlots] = useState(initialSlots);
-  const [rooms] = useState(mockRooms);
+  const [rooms, setRooms] = useState([]); // Will fetch from API
   const [newSlot, setNewSlot] = useState({ day: "Mon", startTime: "", endTime: "", roomId: "", capacity: 1 });
   const [passwordChanging, setPasswordChanging] = useState(false);
   const [showAppointmentsDetails, setShowAppointmentsDetails] = useState(true);
@@ -73,6 +73,61 @@ export default function DoctorDashboard() {
   // Modal state for medical record editor
   const [showMedicalRecordModal, setShowMedicalRecordModal] = useState(false);
   const [selectedPatient, setSelectedPatient] = useState(null);
+
+  /* New Handlers for Medical Records */
+  const handleOpenRecords = async (appointmentId) => {
+    try {
+      const response = await doctorApi.getAppointmentDetails(appointmentId);
+      
+      if (response.data) {
+        const { appointment, medicalHistory } = response.data;
+        
+        // Map Backend Data to Frontend Modal Props
+        const mappedPatient = {
+          id: appointment.patientId, // Patient ID
+          name: appointment.patient?.person?.fullName || "Unknown Patient",
+          appointmentId: appointment.id, // Needed for tracking which appointment to close
+          medicalHistory: medicalHistory.map(record => ({
+            id: record.id,
+            date: record.appointment?.appointmentDate ? record.appointment.appointmentDate.split('T')[0] : 'N/A',
+            diagnosis: record.diagnosis,
+            prescription: record.prescription,
+            notes: record.notes,
+            doctorName: record.appointment?.doctor?.person?.fullName
+          }))
+        };
+        setSelectedPatient(mappedPatient);
+        setShowMedicalRecordModal(true);
+      }
+    } catch (error) {
+      alert("Failed to load patient records");
+    }
+  };
+
+  const handleSaveRecord = async (recordData) => {
+    if (!selectedPatient?.appointmentId) return;
+    
+    try {
+      // API Call to save record and complete appointment
+      // Remove 'id' and 'date' if they're temp values, let backend generate them
+      const { id, date, patientId, ...payload } = recordData;
+      
+      await doctorApi.addMedicalRecord(selectedPatient.appointmentId, payload);
+      
+      // Update Local State
+      setTodayAppointments(prev => prev.map(appt => 
+        appt.id === selectedPatient.appointmentId 
+        ? { ...appt, status: "Completed" } 
+        : appt
+      ));
+      
+      setShowMedicalRecordModal(false);
+      setSelectedPatient(null);
+      
+    } catch (error) {
+      alert("Failed to save record: " + (error.response?.data?.error || error.message));
+    }
+  };
 
   const weekdayOrder = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -110,14 +165,9 @@ export default function DoctorDashboard() {
     if (token) {
       try {
         const payload = JSON.parse(atob(token.split('.')[1]));
-        console.log('👨‍⚕️ ========== LOGGED IN DOCTOR ==========');
-        console.log('User ID:', payload.userId);
-        console.log('Doctor ID:', payload.doctorId);
-        console.log('Email:', payload.email);
-        console.log('Role:', payload.role);
-        console.log('========================================');
+
       } catch (e) {
-        console.error('Failed to parse token');
+        alert('Failed to parse token');
       }
     }
 
@@ -149,7 +199,7 @@ export default function DoctorDashboard() {
         // 2. Fetch Recurrent Schedule
         const scheduleResponse = await doctorApi.getWeeklySchedule();
         if (scheduleResponse.data && Array.isArray(scheduleResponse.data)) {
-          console.log('� Weekly Schedule fetched:', scheduleResponse.data.length);
+          // For Weekly Schedule display
           const formattedSchedule = scheduleResponse.data.map(s => ({
             day: s.weekDay,
             start: s.startTime.substring(0, 5),
@@ -157,14 +207,33 @@ export default function DoctorDashboard() {
             max: s.maxCapacity
           }));
           setWeeklySchedule(formattedSchedule);
+          
+          // For Manage Time Slots display
+          const formattedSlots = scheduleResponse.data.map(s => ({
+            id: s.id,
+            day: s.weekDay,
+            startTime: s.startTime.substring(0, 5),
+            endTime: s.endTime.substring(0, 5),
+            roomId: s.room?.id || s.roomId,
+            room: s.room, // Save full room object
+            capacity: s.maxCapacity
+          }));
+          setSlots(formattedSlots);
         }
 
         // 3. Fetch Week Appointments
-        // Fetch from today onwards (API defaults to this week if no date provided, but let's be safe)
         const weekResponse = await doctorApi.getWeekAppointments();
         if (weekResponse.data?.appointments) {
-            console.log('🗓️ Week Appointments fetched:', Object.keys(weekResponse.data.appointments).length);
+            console.log('🗓️ Week Appointments fetched:',  Object.keys(weekResponse.data.appointments).length, 'days');
+            console.log('🗓️ Week Appointments data:', weekResponse.data.appointments);
             setWeeklyAppointments(weekResponse.data.appointments);
+        }
+
+        // 4. Fetch Rooms
+        const roomsResponse = await doctorApi.getRooms();
+        if (roomsResponse.data && Array.isArray(roomsResponse.data)) {
+          console.log('🚪 Rooms fetched:', roomsResponse.data.length);
+          setRooms(roomsResponse.data);
         }
 
       } catch (error) {
@@ -175,70 +244,24 @@ export default function DoctorDashboard() {
     fetchData();
   }, []);
 
-  // تحديث قائمة المرضى داخل العيادة
+  // Sync Patients Inside Clinic with Confirmed Appointments
   useEffect(() => {
-    const stored = JSON.parse(localStorage.getItem(PATIENTS_IN_CLINIC_KEY) || "[]");
-
-    // Add mock data if empty for testing
-    if (stored.length === 0) {
-      const mockPatientsInClinic = [
-        {
-          id: 1,
-          appointmentId: 101,
-          name: "Ahmed Mohamed",
-          reason: "Regular Checkup",
-          checkInTime: new Date().toISOString(),
-          doctorId: 1,
-          medicalHistory: [
-            {
-              id: 1,
-              date: "2025-11-20",
-              diagnosis: "Hypertension",
-              prescription: "Amlodipine 5mg daily",
-              notes: "Monitor blood pressure weekly"
-            },
-            {
-              id: 2,
-              date: "2025-10-15",
-              diagnosis: "Common Cold",
-              prescription: "Paracetamol 500mg as needed",
-              notes: "Rest and fluids"
-            }
-          ]
-        },
-        {
-          id: 2,
-          appointmentId: 102,
-          name: "Sara Ali",
-          reason: "Follow-up",
-          checkInTime: new Date(Date.now() - 30 * 60000).toISOString(),
-          doctorId: 1,
-          medicalHistory: [
-            {
-              id: 3,
-              date: "2025-11-15",
-              diagnosis: "Diabetes Type 2",
-              prescription: "Metformin 500mg twice daily",
-              notes: "Follow-up in 2 weeks"
-            }
-          ]
-        },
-        {
-          id: 3,
-          appointmentId: 103,
-          name: "Mohamed Hassan",
-          reason: "Consultation",
-          checkInTime: new Date(Date.now() - 15 * 60000).toISOString(),
-          doctorId: 1,
-          medicalHistory: []
-        }
-      ];
-      localStorage.setItem(PATIENTS_IN_CLINIC_KEY, JSON.stringify(mockPatientsInClinic));
-      setPatientsInClinic(mockPatientsInClinic.filter((p) => p.doctorId === currentDoctorId || !currentDoctorId));
-    } else {
-      setPatientsInClinic(stored.filter((p) => p.doctorId === currentDoctorId || !currentDoctorId));
-    }
-  }, [currentDoctorId]);
+    // Filter today's appointments for "Confirmed" status
+    const confirmed = todayAppointments.filter(app => app.status === 'Confirmed');
+    
+    // Map to the structure expected by the UI list
+    const mappedPatients = confirmed.map(app => ({
+        id: app.id, // Appointment ID for action triggers
+        appointmentId: app.id,
+        name: app.patient,
+        reason: app.reason,
+        checkInTime: new Date().toISOString(), // Could be from backend in future
+        medicalHistory: [] // Will be loaded on demand
+    }));
+    
+    console.log('👥 Patients Inside Clinic (Confirmed):', mappedPatients);
+    setPatientsInClinic(mappedPatients);
+  }, [todayAppointments]);
 
   const handleAddRecord = () => {
     setNewAppointment({
@@ -350,16 +373,56 @@ export default function DoctorDashboard() {
     setShowEditForm(false);
   };
 
-  const handleAddSlot = (e) => {
+  const handleAddSlot = async (e) => {
     e.preventDefault();
-    if (!newSlot.startTime || !newSlot.endTime || !newSlot.roomId) return;
-    const id = Date.now();
-    setSlots((prev) => [...prev, { id, ...newSlot }]);
-    setNewSlot({ ...newSlot, startTime: "", endTime: "", roomId: "" });
+    if (!newSlot.startTime || !newSlot.endTime || !newSlot.roomId) {
+      alert('Please fill all fields');
+      return;
+    }
+
+    try {
+      const payload = {
+        weekDay: newSlot.day,
+        roomId: parseInt(newSlot.roomId),
+        startTime: newSlot.startTime,
+        endTime: newSlot.endTime,
+        maxCapacity: parseInt(newSlot.capacity)
+      };
+
+      const response = await doctorApi.addSchedule(payload);
+      
+      if (response.data) {
+        // Add to local state
+        const newScheduleSlot = {
+          id: response.data.id,
+          day: response.data.weekDay,
+          startTime: response.data.startTime.substring(11, 16),
+          endTime: response.data.endTime.substring(11, 16),
+          roomId: response.data.roomId,
+          room: response.data.room, // Include room object
+          capacity: response.data.maxCapacity
+        };
+        setSlots(prev => [...prev, newScheduleSlot]);
+        
+        // Reset form
+        setNewSlot({ day: 'Mon', startTime: '', endTime: '', roomId: '', capacity: 1 });
+        alert('Schedule slot added successfully!');
+      }
+    } catch (error) {
+      console.error('Failed to add slot:', error);
+      alert('Failed to add schedule: ' + (error.response?.data?.error || error.message));
+    }
   };
 
-  const handleDeleteSlot = (id) => {
-    setSlots((prev) => prev.filter((s) => s.id !== id));
+  const handleDeleteSlot = async (id) => {
+    try {
+      await doctorApi.deleteSchedule(id);
+      setSlots(prev => prev.filter(s => s.id !== id));
+      alert('Schedule deleted successfully!');
+    } catch (error) {
+      console.error('Failed to delete slot:', error);
+      alert('Failed to delete schedule: ' + (error.response?.data?.error || error.message));
+    }
   };
 
   const handleChangePassword = () => {
@@ -395,6 +458,8 @@ export default function DoctorDashboard() {
     // Check key in weeklyAppointments map
     const dateKey = dateObj.toISOString().split("T")[0];
     const dayAppointments = weeklyAppointments[dateKey] || [];
+    
+    console.log(`📅 getAppointmentsForSchedule for ${schedule.day} (${dateKey}):`, dayAppointments.length, 'appointments');
 
     // Filter appointments that fall within this slot's time range
     // Note: The API 'booked' appointments already belong to a specific schedule,
@@ -637,11 +702,13 @@ export default function DoctorDashboard() {
                     setNewSlot({ ...newSlot, day: e.target.value })
                   }
                 >
+                  <option>Sun</option>
                   <option>Mon</option>
                   <option>Tue</option>
                   <option>Wed</option>
                   <option>Thu</option>
                   <option>Fri</option>
+                  <option>Sat</option>
                 </select>
               </label>
               <label className="field">
@@ -689,7 +756,7 @@ export default function DoctorDashboard() {
               <input
                 type="number"
                 min={1}
-                max={20}
+                max={50}
                 value={newSlot.capacity}
                 onChange={(e) =>
                   setNewSlot({
@@ -711,7 +778,7 @@ export default function DoctorDashboard() {
                   {s.day} · {s.startTime} - {s.endTime}
                 </div>
                 <div className="list-subtitle">
-                  {rooms.find(r => r.id === s.roomId)?.roomName || 'Unknown Room'} · Capacity: {s.capacity}
+                  {s.room?.roomName || rooms.find(r => r.id === s.roomId)?.roomName || 'Unknown Room'} · Capacity: {s.capacity}
                 </div>
                 <button
                   type="button"
@@ -746,10 +813,7 @@ export default function DoctorDashboard() {
                   <button
                     type="button"
                     className="btn-secondary"
-                    onClick={() => {
-                      setSelectedPatient(p);
-                      setShowMedicalRecordModal(true);
-                    }}
+                    onClick={() => handleOpenRecords(p.appointmentId)}
                   >
                     Open Records
                   </button>
@@ -968,15 +1032,8 @@ export default function DoctorDashboard() {
           setShowMedicalRecordModal(false);
           setSelectedPatient(null);
         }}
-        onSave={async (newRecord) => {
-          // Backend integration point
-          console.log("Saved medical record:", newRecord);
-          // TODO: Call API endpoint here when backend is ready
-        }}
+        onSave={handleSaveRecord}
       />
     </div>
   );
 }
-
-
-
