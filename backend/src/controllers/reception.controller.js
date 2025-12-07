@@ -517,69 +517,73 @@ class ReceptionController {
       const tomorrow = new Date(today);
       tomorrow.setDate(tomorrow.getDate() + 1);
       
-      // Aggregate today's statistics
-      const [totalToday, pending, confirmed] = await Promise.all([
-        // Total appointments today
-        prisma.appointment.count({
-          where: {
-            appointmentDate: { gte: today, lt: tomorrow }
-          }
-        }),
-        
-        // Pending appointments (all future)
-        prisma.appointment.count({
-          where: {
-            appointmentDate: { gte: today },
-            status: 'Pending'
-          }
-        }),
-        
-        // Today's confirmed appointments (checked-in)
-        prisma.appointment.findMany({
-          where: {
-            appointmentDate: { gte: today, lt: tomorrow },
-            status: 'Confirmed'
-          },
-          take: 15,
-          orderBy: {
-            appointmentDate: 'asc'
-          },
-          include: {
-            patient: {
-              include: {
-                person: { 
-                  select: { 
-                    fullName: true, 
-                    phoneNumber: true 
-                  } 
+      // Get ALL today's appointments (Pending, Confirmed, Completed)
+      const todayAppointments = await prisma.appointment.findMany({
+        where: {
+          appointmentDate: { gte: today, lt: tomorrow }
+        },
+        include: {
+          patient: {
+            include: {
+              person: {
+                select: { 
+                  fullName: true, 
+                  phoneNumber: true 
                 }
               }
-            },
-            doctor: {
-              include: {
-                person: { 
-                  select: { fullName: true } 
-                },
-                specialty: { 
-                  select: { specialtyName: true } 
-                }
+            }
+          },
+          doctor: {
+            include: {
+              person: { 
+                select: { fullName: true } 
+              },
+              specialty: { 
+                select: { specialtyName: true } 
               }
-            },
-            schedule: { 
-              include: { room: true } 
             }
           }
-        })
-      ]);
+        },
+        orderBy: { appointmentDate: 'asc' }
+      });
+      
+      // Group by doctor
+      const doctorMap = {};
+      todayAppointments.forEach(appt => {
+        const doctorId = appt.doctorId;
+        
+        if (!doctorMap[doctorId]) {
+          doctorMap[doctorId] = {
+            doctorId,
+            doctorName: appt.doctor.person.fullName,
+            specialty: appt.doctor.specialty.specialtyName,
+            totalAppointments: 0,
+            checkedInCount: 0,
+            appointments: []
+          };
+        }
+        
+        doctorMap[doctorId].totalAppointments++;
+        if (appt.status === 'Confirmed') {
+          doctorMap[doctorId].checkedInCount++;
+        }
+        
+        doctorMap[doctorId].appointments.push({
+          id: appt.id,
+          patientId: appt.patientId,
+          patientName: appt.patient.person.fullName,
+          phoneNumber: appt.patient.person.phoneNumber,
+          appointmentTime: appt.appointmentDate,
+          appointmentType: appt.appointmentType,
+          status: appt.status,
+          feePaid: appt.feePaid
+        });
+      });
       
       return res.json({
         success: true,
         data: {
-          stats: {
-            todayTotal: totalToday,
-            pendingAppointments: pending
-          },
-          todayAppointments: confirmed
+          doctorGroups: Object.values(doctorMap)
         }
       });
       

@@ -1,5 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
+import BookAppointmentModal from "../components/BookAppointmentModal.jsx";
+import * as receptionApi from "../api/reception.api.js";
 
 const APPOINTMENTS_KEY = "adminAppointmentsData";
 const PATIENTS_KEY = "adminPatientsData";
@@ -546,6 +548,102 @@ export default function ReceptionistDashboard() {
 
       {/* Modal: Book Appointment Form */}
       {showBookForm && (
+        <BookAppointmentModal
+          onClose={() => setShowBookForm(false)}
+          onSuccess={async (bookingData) => {
+            try {
+              const {
+                patientName,
+                phoneNumber,
+                gender,
+                yearOfBirth,
+                appointmentType,
+                appointmentDate,
+                selectedDoctor,
+                selectedTime,
+                selectedScheduleId,
+                fee
+              } = bookingData;
+
+              console.log("📝 Booking Data:", bookingData);
+
+              // Step 1: Add walk-in patient (or it will return error if exists)
+              let patientId = null;
+              try {
+                const patientResponse = await receptionApi.addWalkInPatient({
+                  fullName: patientName,
+                  phoneNumber: phoneNumber,
+                  gender: gender,
+                  yearOfBirth: parseInt(yearOfBirth)
+                });
+                
+                console.log("✅ Patient created:", patientResponse);
+                
+                if (patientResponse.success) {
+                  // Backend returns 'id' not 'patientId'
+                  patientId = patientResponse.data.patient.id;
+                  console.log("📝 Extracted patientId:", patientId);
+                }
+              } catch (patientError) {
+                // If patient already exists (409), search for them
+                if (patientError.message?.includes("already registered")) {
+                  console.log("👤 Patient exists, searching...");
+                  const searchResponse = await receptionApi.searchPatient(phoneNumber);
+                  console.log("🔍 Search response:", searchResponse);
+                  if (searchResponse.success && searchResponse.data.length > 0) {
+                    // Search also returns 'id' field
+                    patientId = searchResponse.data[0].id;
+                    console.log("✅ Found existing patient, id:", patientId);
+                  }
+                } else {
+                  throw patientError;
+                }
+              }
+
+              if (!patientId) {
+                alert("Failed to create or find patient");
+                return;
+              }
+
+              // Step 2: Book appointment
+              console.log("📅 Booking appointment with data:", {
+                patientId: patientId,
+                doctorId: selectedDoctor,
+                scheduleId: selectedScheduleId,
+                appointmentType: appointmentType,
+                appointmentDate: appointmentDate,
+                feePaid: fee
+              });
+
+              const appointmentResponse = await receptionApi.bookAppointmentForPatient({
+                patientId: patientId,
+                doctorId: selectedDoctor,
+                scheduleId: selectedScheduleId,
+                appointmentType: appointmentType,
+                appointmentDate: appointmentDate,
+                feePaid: fee
+              });
+
+              console.log("✅ Appointment booked:", appointmentResponse);
+
+              if (appointmentResponse.success) {
+                setShowBookForm(false);
+                alert("✅ Appointment booked successfully!");
+                
+                // Refresh dashboard data
+                window.location.reload();
+              } else {
+                alert("Failed to book appointment: " + (appointmentResponse.error || "Unknown error"));
+              }
+            } catch (error) {
+              console.error("💥 Booking error:", error);
+              alert("Error: " + (error.message || "Failed to book appointment"));
+            }
+          }}
+        />
+      )}
+      {/* OLD FORM - COMMENTED OUT
+      {showBookForm && (
         <div
           style={{
             position: "fixed",
@@ -810,6 +908,7 @@ export default function ReceptionistDashboard() {
           </div>
         </div>
       )}
+      */}
 
       {/* Modal: Appointment Details */}
       {selectedAppointmentCard && (

@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const receptionController = require('../controllers/reception.controller');
+const patientController = require('../controllers/patient.controller');
 const authMiddleware = require('../middlewares/auth.middleware');
 
 // All routes require authentication and receptionist role
@@ -10,6 +11,13 @@ router.use(authMiddleware.isReceptionist);
 // ===== Dashboard =====
 // Get dashboard data
 router.get('/dashboard', receptionController.getDashboard);
+
+// ===== Booking Helpers (Shared from Patient) =====
+// Get all specialties (for booking form)
+router.get('/specialties', patientController.getSpecialties);
+
+// Get available doctors (for booking form)
+router.get('/doctors/available', patientController.getAvailableDoctors);
 
 
 // ===== Patient Management =====
