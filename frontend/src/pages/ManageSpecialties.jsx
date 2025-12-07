@@ -3,11 +3,17 @@ import PageHeader from "../components/PageHeader.jsx";
 import DataTable from "../components/DataTable.jsx";
 import CRUDModal from "../components/CRUDModal.jsx";
 import ConfirmDialog from "../components/ConfirmDialog.jsx";
-
-const SPECIALTIES_KEY = "specialtiesData";
+import { 
+  getAllSpecialties, 
+  createSpecialty, 
+  updateSpecialty, 
+  deleteSpecialty 
+} from "../api/admin.api.js";
 
 export default function ManageSpecialties() {
   const [specialties, setSpecialties] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [showModal, setShowModal] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
@@ -16,25 +22,24 @@ export default function ManageSpecialties() {
     name: ""
   });
 
+  // Fetch specialties from API
   useEffect(() => {
-    const savedSpecialties = JSON.parse(
-      localStorage.getItem(SPECIALTIES_KEY) || "[]"
-    );
-    if (savedSpecialties.length === 0) {
-      const defaultSpecialties = [
-        { id: 1, name: "Cardiology" },
-        { id: 2, name: "Dermatology" },
-        { id: 3, name: "Neurology" },
-        { id: 4, name: "Orthopedics" },
-        { id: 5, name: "Pediatrics" },
-        { id: 6, name: "General Medicine" }
-      ];
-      setSpecialties(defaultSpecialties);
-      localStorage.setItem(SPECIALTIES_KEY, JSON.stringify(defaultSpecialties));
-    } else {
-      setSpecialties(savedSpecialties);
-    }
+    fetchSpecialties();
   }, []);
+
+  async function fetchSpecialties() {
+    try {
+      setLoading(true);
+      setError(null);
+      const response = await getAllSpecialties();
+      setSpecialties(response.data.specialties || []);
+    } catch (err) {
+      console.error('Failed to fetch specialties:', err);
+      setError(err.message || 'Failed to load specialties');
+    } finally {
+      setLoading(false);
+    }
+  }
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -58,37 +63,41 @@ export default function ManageSpecialties() {
     setShowDeleteConfirm(true);
   };
 
-  const handleDeleteConfirm = () => {
-    const updated = specialties.filter((specialty) => specialty.id !== deletingId);
-    setSpecialties(updated);
-    localStorage.setItem(SPECIALTIES_KEY, JSON.stringify(updated));
-    setDeletingId(null);
+  const handleDeleteConfirm = async () => {
+    try {
+      await deleteSpecialty(deletingId);
+      setShowDeleteConfirm(false);
+      setDeletingId(null);
+      // Refresh list
+      await fetchSpecialties();
+    } catch (err) {
+      console.error('Failed to delete specialty:', err);
+      alert(err.message || 'Failed to delete specialty');
+    }
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
 
-    if (editingSpecialty) {
-      const updated = specialties.map((specialty) =>
-        specialty.id === editingSpecialty.id
-          ? { ...specialty, name: formData.name }
-          : specialty
-      );
-      setSpecialties(updated);
-      localStorage.setItem(SPECIALTIES_KEY, JSON.stringify(updated));
-    } else {
-      const newSpecialty = {
-        id: Date.now(),
-        name: formData.name
-      };
-      const updated = [...specialties, newSpecialty];
-      setSpecialties(updated);
-      localStorage.setItem(SPECIALTIES_KEY, JSON.stringify(updated));
-    }
+    try {
+      if (editingSpecialty) {
+        // Update existing specialty
+        await updateSpecialty(editingSpecialty.id, formData);
+      } else {
+        // Create new specialty
+        await createSpecialty(formData);
+      }
 
-    setShowModal(false);
-    setFormData({ name: "" });
-    setEditingSpecialty(null);
+      setShowModal(false);
+      setFormData({ name: "" });
+      setEditingSpecialty(null);
+      
+      // Refresh list
+      await fetchSpecialties();
+    } catch (err) {
+      console.error('Failed to save specialty:', err);
+      alert(err.message || 'Failed to save specialty');
+    }
   };
 
   const columns = [
@@ -99,6 +108,43 @@ export default function ManageSpecialties() {
   const formFields = [
     { name: 'name', label: 'Name', type: 'text', required: true, placeholder: 'Cardiology' }
   ];
+
+  // Loading state
+  if (loading) {
+    return (
+      <div className="page">
+        <PageHeader
+          title="Manage Specialties"
+          description="Add, edit, or remove medical specialties."
+        />
+        <div className="card" style={{ padding: '2rem', textAlign: 'center' }}>
+          <p>Loading specialties...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Error state
+  if (error) {
+    return (
+      <div className="page">
+        <PageHeader
+          title="Manage Specialties"
+          description="Add, edit, or remove medical specialties."
+        />
+        <div className="card" style={{ padding: '2rem', textAlign: 'center', color: '#e74c3c' }}>
+          <p>⚠️ {error}</p>
+          <button 
+            className="btn btn-primary" 
+            onClick={fetchSpecialties}
+            style={{ marginTop: '1rem' }}
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="page">

@@ -72,4 +72,11 @@ router.post('/admins', adminController.createAdmin);
 router.put('/admins/:id', adminController.updateAdmin);
 router.delete('/admins/:id', adminController.deleteAdmin);
 
+// ==================== REPORTS ====================
+router.get('/reports/appointments', adminController.getAppointmentsReport);
+router.get('/reports/patients', adminController.getPatientsReport);
+router.get('/reports/doctors', adminController.getDoctorsReport);
+router.get('/reports/revenue', adminController.getRevenueReport);
+router.get('/reports/specialty', adminController.getSpecialtyReport);
+
 module.exports = router;

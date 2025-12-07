@@ -129,7 +129,7 @@ class ReceptionController {
    */
   async bookAppointmentForPatient(req, res, next) {
     try {
-      const { patientId, doctorId, scheduleId, appointmentType, appointmentDate, feePaid } = req.body;
+      const { patientId, doctorId, scheduleId, appointmentType, appointmentDate } = req.body;
 
       // Validation
       if (!patientId || !doctorId || !scheduleId || !appointmentType || !appointmentDate) {
@@ -187,7 +187,6 @@ class ReceptionController {
           scheduleId: parseInt(scheduleId),
           appointmentType,
           appointmentDate: new Date(appointmentDate),
-          feePaid: parseFloat(feePaid) || 0,
           status: 'Pending'
         },
         include: {
@@ -512,15 +511,16 @@ class ReceptionController {
    */
   async getDashboard(req, res, next) {
     try {
+      // Get today's date in YYYY-MM-DD format (local timezone)
       const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const tomorrow = new Date(today);
-      tomorrow.setDate(tomorrow.getDate() + 1);
+      const todayDateString = today.toISOString().split('T')[0]; // '2025-12-07'
+      
+      console.log('📅 Query date:', todayDateString);
       
       // Get ALL today's appointments (Pending, Confirmed, Completed)
       const todayAppointments = await prisma.appointment.findMany({
         where: {
-          appointmentDate: { gte: today, lt: tomorrow }
+          appointmentDate: new Date(todayDateString)
         },
         include: {
           patient: {
@@ -539,7 +539,7 @@ class ReceptionController {
                 select: { fullName: true } 
               },
               specialty: { 
-                select: { specialtyName: true } 
+                select: { name: true } 
               }
             }
           }
@@ -547,6 +547,11 @@ class ReceptionController {
         orderBy: { appointmentDate: 'asc' }
       });
       
+      console.log(`📊 Found ${todayAppointments.length} appointments for today`);
+      todayAppointments.forEach(appt => {
+        console.log(`  - ${appt.patient.person.fullName} (Dr. ${appt.doctor.person.fullName}): ${appt.status}`);
+      });
+        
       // Group by doctor
       const doctorMap = {};
       todayAppointments.forEach(appt => {
@@ -556,14 +561,17 @@ class ReceptionController {
           doctorMap[doctorId] = {
             doctorId,
             doctorName: appt.doctor.person.fullName,
-            specialty: appt.doctor.specialty.specialtyName,
+            specialty: appt.doctor.specialty.name,
             totalAppointments: 0,
             checkedInCount: 0,
             appointments: []
           };
         }
         
-        doctorMap[doctorId].totalAppointments++;
+        // Count only Pending appointments
+        if (appt.status === 'Pending') {
+          doctorMap[doctorId].totalAppointments++;
+        }
         if (appt.status === 'Confirmed') {
           doctorMap[doctorId].checkedInCount++;
         }
@@ -575,8 +583,7 @@ class ReceptionController {
           phoneNumber: appt.patient.person.phoneNumber,
           appointmentTime: appt.appointmentDate,
           appointmentType: appt.appointmentType,
-          status: appt.status,
-          feePaid: appt.feePaid
+          status: appt.status
         });
       });
       

@@ -3,11 +3,17 @@ import PageHeader from "../components/PageHeader.jsx";
 import DataTable from "../components/DataTable.jsx";
 import CRUDModal from "../components/CRUDModal.jsx";
 import ConfirmDialog from "../components/ConfirmDialog.jsx";
-
-const ROOMS_KEY = "roomsData";
+import { 
+  getAllRooms, 
+  createRoom, 
+  updateRoom, 
+  deleteRoom 
+} from "../api/admin.api.js";
 
 export default function ManageRooms() {
   const [rooms, setRooms] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [showModal, setShowModal] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
@@ -17,21 +23,22 @@ export default function ManageRooms() {
   });
 
   useEffect(() => {
-    const savedRooms = JSON.parse(localStorage.getItem(ROOMS_KEY) || "[]");
-    if (savedRooms.length === 0) {
-      const defaultRooms = [
-        { id: 1, roomName: "Room 101" },
-        { id: 2, roomName: "Room 102" },
-        { id: 3, roomName: "Room 201" },
-        { id: 4, roomName: "Room 202" },
-        { id: 5, roomName: "Room 301" }
-      ];
-      setRooms(defaultRooms);
-      localStorage.setItem(ROOMS_KEY, JSON.stringify(defaultRooms));
-    } else {
-      setRooms(savedRooms);
-    }
+    fetchRooms();
   }, []);
+
+  async function fetchRooms() {
+    try {
+      setLoading(true);
+      setError(null);
+      const response = await getAllRooms();
+      setRooms(response.data.rooms || []);
+    } catch (err) {
+      console.error('Failed to fetch rooms:', err);
+      setError(err.message || 'Failed to load rooms');
+    } finally {
+      setLoading(false);
+    }
+  }
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -55,37 +62,36 @@ export default function ManageRooms() {
     setShowDeleteConfirm(true);
   };
 
-  const handleDeleteConfirm = () => {
-    const updated = rooms.filter((room) => room.id !== deletingId);
-    setRooms(updated);
-    localStorage.setItem(ROOMS_KEY, JSON.stringify(updated));
-    setDeletingId(null);
+  const handleDeleteConfirm = async () => {
+    try {
+      await deleteRoom(deletingId);
+      setShowDeleteConfirm(false);
+      setDeletingId(null);
+      await fetchRooms();
+    } catch (err) {
+      console.error('Failed to delete room:', err);
+      alert(err.message || 'Failed to delete room');
+    }
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
 
-    if (editingRoom) {
-      const updated = rooms.map((room) =>
-        room.id === editingRoom.id
-          ? { ...room, roomName: formData.roomName }
-          : room
-      );
-      setRooms(updated);
-      localStorage.setItem(ROOMS_KEY, JSON.stringify(updated));
-    } else {
-      const newRoom = {
-        id: Date.now(),
-        roomName: formData.roomName
-      };
-      const updated = [...rooms, newRoom];
-      setRooms(updated);
-      localStorage.setItem(ROOMS_KEY, JSON.stringify(updated));
-    }
+    try {
+      if (editingRoom) {
+        await updateRoom(editingRoom.id, formData);
+      } else {
+        await createRoom(formData);
+      }
 
-    setShowModal(false);
-    setFormData({ roomName: "" });
-    setEditingRoom(null);
+      setShowModal(false);
+      setFormData({ roomName: "" });
+      setEditingRoom(null);
+      await fetchRooms();
+    } catch (err) {
+      console.error('Failed to save room:', err);
+      alert(err.message || 'Failed to save room');
+    }
   };
 
   const columns = [
@@ -96,6 +102,41 @@ export default function ManageRooms() {
   const formFields = [
     { name: 'roomName', label: 'Room Name', type: 'text', required: true, placeholder: 'Room 101' }
   ];
+
+  if (loading) {
+    return (
+      <div className="page">
+        <PageHeader
+          title="Manage Rooms"
+          description="Add, edit, or remove clinic rooms."
+        />
+        <div className="card" style={{ padding: '2rem', textAlign: 'center' }}>
+          <p>Loading rooms...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="page">
+        <PageHeader
+          title="Manage Rooms"
+          description="Add, edit, or remove clinic rooms."
+        />
+        <div className="card" style={{ padding: '2rem', textAlign: 'center', color: '#e74c3c' }}>
+          <p>⚠️ {error}</p>
+          <button 
+            className="btn btn-primary" 
+            onClick={fetchRooms}
+            style={{ marginTop: '1rem' }}
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="page">

@@ -3,11 +3,17 @@ import PageHeader from "../components/PageHeader.jsx";
 import DataTable from "../components/DataTable.jsx";
 import CRUDModal from "../components/CRUDModal.jsx";
 import ConfirmDialog from "../components/ConfirmDialog.jsx";
-
-const RECEPTIONISTS_KEY = "receptionistsData";
+import { 
+  getAllReceptionists, 
+  createReceptionist, 
+  updateReceptionist, 
+  deleteReceptionist 
+} from "../api/admin.api.js";
 
 export default function ManageReceptionists() {
   const [receptionists, setReceptionists] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [showModal, setShowModal] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
@@ -17,30 +23,26 @@ export default function ManageReceptionists() {
     email: "",
     phone: "",
     password: "",
-    gender: "male",
-    shiftStart: "",
-    shiftEnd: ""
+    gender: "Male"
   });
 
   useEffect(() => {
-    const savedReceptionists = JSON.parse(localStorage.getItem(RECEPTIONISTS_KEY) || "[]");
-    if (savedReceptionists.length === 0) {
-      const defaultReceptionists = [
-        {
-          id: 1,
-          fullName: "Mona Ahmed",
-          email: "mona@clinic.com",
-          gender: "female",
-          shiftStart: "08:00",
-          shiftEnd: "16:00"
-        }
-      ];
-      setReceptionists(defaultReceptionists);
-      localStorage.setItem(RECEPTIONISTS_KEY, JSON.stringify(defaultReceptionists));
-    } else {
-      setReceptionists(savedReceptionists);
-    }
+    fetchReceptionists();
   }, []);
+
+  async function fetchReceptionists() {
+    try {
+      setLoading(true);
+      setError(null);
+      const response = await getAllReceptionists();
+      setReceptionists(response.data.receptionists || []);
+    } catch (err) {
+      console.error('Failed to fetch receptionists:', err);
+      setError(err.message || 'Failed to load receptionists');
+    } finally {
+      setLoading(false);
+    }
+  }
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -54,9 +56,7 @@ export default function ManageReceptionists() {
       email: "",
       phone: "",
       password: "",
-      gender: "male",
-      shiftStart: "",
-      shiftEnd: ""
+      gender: "Male"
     });
     setShowModal(true);
   };
@@ -66,11 +66,9 @@ export default function ManageReceptionists() {
     setFormData({
       fullName: receptionist.fullName,
       email: receptionist.email,
-      phone: receptionist.phone || "",
+      phone: receptionist.phoneNumber || "",
       password: "",
-      gender: receptionist.gender || "male",
-      shiftStart: receptionist.shiftStart || "",
-      shiftEnd: receptionist.shiftEnd || ""
+      gender: receptionist.gender || "Male"
     });
     setShowModal(true);
   };
@@ -80,70 +78,48 @@ export default function ManageReceptionists() {
     setShowDeleteConfirm(true);
   };
 
-  const handleDeleteConfirm = () => {
-    const updated = receptionists.filter((receptionist) => receptionist.id !== deletingId);
-    setReceptionists(updated);
-    localStorage.setItem(RECEPTIONISTS_KEY, JSON.stringify(updated));
-    setDeletingId(null);
+  const handleDeleteConfirm = async () => {
+    try {
+      await deleteReceptionist(deletingId);
+      setShowDeleteConfirm(false);
+      setDeletingId(null);
+      await fetchReceptionists();
+    } catch (err) {
+      console.error('Failed to delete receptionist:', err);
+      alert(err.message || 'Failed to delete receptionist');
+    }
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
 
-    if (editingReceptionist) {
-      const updated = receptionists.map((receptionist) =>
-        receptionist.id === editingReceptionist.id
-          ? {
-            ...receptionist,
-            fullName: formData.fullName,
-            email: formData.email,
-            phone: formData.phone,
-            gender: formData.gender,
-            shiftStart: formData.shiftStart,
-            shiftEnd: formData.shiftEnd,
-            ...(formData.password && { password: formData.password })
-          }
-          : receptionist
-      );
-      setReceptionists(updated);
-      localStorage.setItem(RECEPTIONISTS_KEY, JSON.stringify(updated));
-    } else {
-      const newReceptionist = {
-        id: Date.now(),
-        fullName: formData.fullName,
-        email: formData.email,
-        phone: formData.phone,
-        password: formData.password,
-        gender: formData.gender,
-        shiftStart: formData.shiftStart,
-        shiftEnd: formData.shiftEnd
-      };
-      const updated = [...receptionists, newReceptionist];
-      setReceptionists(updated);
-      localStorage.setItem(RECEPTIONISTS_KEY, JSON.stringify(updated));
-    }
+    try {
+      if (editingReceptionist) {
+        await updateReceptionist(editingReceptionist.id, formData); // Use 'id' not 'userId'
+      } else {
+        await createReceptionist(formData);
+      }
 
-    setShowModal(false);
-    setFormData({
-      fullName: "",
-      email: "",
-      phone: "",
-      password: "",
-      gender: "male",
-      shiftStart: "",
-      shiftEnd: ""
-    });
-    setEditingReceptionist(null);
+      setShowModal(false);
+      setFormData({
+        fullName: "",
+        email: "",
+        phone: "",
+        password: "",
+        gender: "Male"
+      });
+      setEditingReceptionist(null);
+      await fetchReceptionists();
+    } catch (err) {
+      console.error('Failed to save receptionist:', err);
+      alert(err.message || 'Failed to save receptionist');
+    }
   };
 
   const columns = [
     { key: 'email', label: 'Email' },
     { key: 'fullName', label: 'Name' },
-    {
-      key: 'shift',
-      label: 'Shift',
-      render: (_, row) => row.shiftStart && row.shiftEnd ? `${row.shiftStart} - ${row.shiftEnd}` : 'N/A'
-    }
+    { key: 'phoneNumber', label: 'Phone' }
   ];
 
   const formFields = [
@@ -151,10 +127,43 @@ export default function ManageReceptionists() {
     { name: 'email', label: 'Email', type: 'email', required: true, placeholder: 'receptionist@clinic.com' },
     { name: 'phone', label: 'Phone', type: 'tel', required: true, placeholder: '+20 100 123 4567' },
     { name: 'password', label: 'Password', type: 'password', required: !editingReceptionist, placeholder: editingReceptionist ? 'Leave empty to keep current' : 'Enter password' },
-    { name: 'gender', label: 'Gender', type: 'select', required: true, options: [{ value: 'male', label: 'Male' }, { value: 'female', label: 'Female' }] },
-    { name: 'shiftStart', label: 'Shift Start', type: 'time', required: true, gridColumn: true },
-    { name: 'shiftEnd', label: 'Shift End', type: 'time', required: true, gridColumn: true }
+    { name: 'gender', label: 'Gender', type: 'select', required: true, options: [{ value: 'Male', label: 'Male' }, { value: 'Female', label: 'Female' }] }
   ];
+
+  if (loading) {
+    return (
+      <div className="page">
+        <PageHeader
+          title="Manage Receptionists"
+          description="Add, edit, or remove receptionist accounts."
+        />
+        <div className="card" style={{ padding: '2rem', textAlign: 'center' }}>
+          <p>Loading receptionists...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="page">
+        <PageHeader
+          title="Manage Receptionists"
+          description="Add, edit, or remove receptionist accounts."
+        />
+        <div className="card" style={{ padding: '2rem', textAlign: 'center', color: '#e74c3c' }}>
+          <p>⚠️ {error}</p>
+          <button 
+            className="btn btn-primary" 
+            onClick={fetchReceptionists}
+            style={{ marginTop: '1rem' }}
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="page">

@@ -20,6 +20,12 @@ export default function ReceptionistDashboard() {
   const [showBookForm, setShowBookForm] = useState(false);
   const [selectedAppointmentCard, setSelectedAppointmentCard] = useState(null);
   const [searchPatientName, setSearchPatientName] = useState("");
+  
+  // API-driven state for Today's Appointments
+  const [doctorGroups, setDoctorGroups] = useState([]);
+  const [selectedDoctorGroup, setSelectedDoctorGroup] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [searchPhone, setSearchPhone] = useState("");
 
   // Form state for booking
   const [bookFormData, setBookFormData] = useState({
@@ -32,6 +38,31 @@ export default function ReceptionistDashboard() {
     selectedDoctorId: null,
     selectedTime: null
   });
+
+  // Fetch dashboard data from API
+  useEffect(() => {
+    const fetchDashboard = async () => {
+      try {
+        setLoading(true);
+        const response = await receptionApi.getDashboard();
+        console.log("📊 Dashboard response:", response);
+        
+        if (response.success) {
+          console.log("👥 Doctor Groups:", response.data.doctorGroups);
+          response.data.doctorGroups.forEach(group => {
+            console.log(`  Doctor: ${group.doctorName}, Total: ${group.totalAppointments}, Checked In: ${group.checkedInCount}, Appointments:`, group.appointments);
+          });
+          setDoctorGroups(response.data.doctorGroups || []);
+        }
+      } catch (error) {
+        console.error("Error fetching dashboard:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchDashboard();
+  }, []);
 
   // قراءة البيانات
   useEffect(() => {
@@ -82,7 +113,6 @@ export default function ReceptionistDashboard() {
         doctorId: 1,
         type: "Examination",
         status: "Confirmed",
-        feePaid: 500,
         bookingTime: new Date(today.getFullYear(), today.getMonth(), today.getDate(), 9, 0, 0, 0).toISOString()
       },
       {
@@ -93,7 +123,6 @@ export default function ReceptionistDashboard() {
         doctorId: 2,
         type: "Consultation",
         status: "Confirmed",
-        feePaid: 250,
         bookingTime: new Date(today.getFullYear(), today.getMonth(), today.getDate(), 10, 30, 0, 0).toISOString()
       },
       {
@@ -104,7 +133,6 @@ export default function ReceptionistDashboard() {
         doctorId: 1,
         type: "Examination",
         status: "Confirmed",
-        feePaid: 500,
         bookingTime: new Date(today.getFullYear(), today.getMonth(), today.getDate(), 11, 0, 0, 0).toISOString()
       },
       {
@@ -115,7 +143,6 @@ export default function ReceptionistDashboard() {
         doctorId: 2,
         type: "Examination",
         status: "Confirmed",
-        feePaid: 400,
         bookingTime: new Date(today.getFullYear(), today.getMonth(), today.getDate(), 14, 0, 0, 0).toISOString()
       }
     ];
@@ -309,7 +336,6 @@ export default function ReceptionistDashboard() {
       doctorId: bookFormData.selectedDoctorId,
       type: bookFormData.appointmentType,
       status: "Confirmed",
-      feePaid: price,
       bookingTime: bookingDateTime.toISOString()
     };
 
@@ -450,7 +476,11 @@ export default function ReceptionistDashboard() {
           <h3>Today's Appointments</h3>
           <span className="muted">{todayPrettyDate}</span>
         </div>
-        {todayAppointmentsByDoctor.length === 0 ? (
+        {loading ? (
+          <p className="muted" style={{ padding: "1rem", textAlign: "center" }}>
+            Loading...
+          </p>
+        ) : doctorGroups.length === 0 ? (
           <p className="muted" style={{ padding: "1rem", textAlign: "center" }}>
             No appointments scheduled for today.
           </p>
@@ -463,64 +493,52 @@ export default function ReceptionistDashboard() {
               marginTop: "1rem"
             }}
           >
-            {todayAppointmentsByDoctor.map((group) => {
-              const doctor = doctors.find((d) => d.id === group.doctorId);
-              const checkedInCount = group.appointments.filter(
-                (appt) => appt.status === "Checked-In"
-              ).length;
-
-              return (
-                <div
-                  key={group.doctorId}
-                  className="card"
-                  style={{
-                    cursor: "pointer",
-                    border: "1px solid var(--border-subtle)",
-                    padding: "0",
-                    overflow: "hidden",
-                    transition: "transform 0.2s, box-shadow 0.2s",
-                    position: "relative"
-                  }}
-                  onClick={() => {
-                    setSelectedAppointmentCard({
-                      doctorId: group.doctorId,
-                      doctorName: group.doctorName,
-                      appointments: group.appointments
-                    });
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.transform = "translateY(-4px)";
-                    e.currentTarget.style.boxShadow = "0 10px 20px rgba(0,0,0,0.2)";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.transform = "translateY(0)";
-                    e.currentTarget.style.boxShadow = "none";
-                  }}
-                >
-                  <div style={{
-                    background: "linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%)",
-                    padding: "1.5rem",
-                    color: "white"
-                  }}>
-                    <div style={{ fontWeight: 700, fontSize: "1.25rem", marginBottom: "0.25rem" }}>
-                      {group.doctorName}
-                    </div>
-                    {doctor && (
-                      <div style={{ opacity: 0.9, fontSize: "0.95rem" }}>
-                        {doctor.specialty}
-                      </div>
-                    )}
+            {doctorGroups.map((group) => (
+              <div
+                key={group.doctorId}
+                className="card"
+                style={{
+                  cursor: "pointer",
+                  border: "1px solid var(--border-subtle)",
+                  padding: "0",
+                  overflow: "hidden",
+                  transition: "transform 0.2s, box-shadow 0.2s",
+                  position: "relative"
+                }}
+                onClick={() => {
+                  setSelectedDoctorGroup(group);
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.transform = "translateY(-4px)";
+                  e.currentTarget.style.boxShadow = "0 10px 20px rgba(0,0,0,0.2)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = "translateY(0)";
+                  e.currentTarget.style.boxShadow = "none";
+                }}
+              >
+                <div style={{
+                  background: "linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%)",
+                  padding: "1.5rem",
+                  color: "white"
+                }}>
+                  <div style={{ fontWeight: 700, fontSize: "1.25rem", marginBottom: "0.25rem" }}>
+                    {group.doctorName}
                   </div>
+                  <div style={{ opacity: 0.9, fontSize: "0.95rem" }}>
+                    {group.specialty}
+                  </div>
+                </div>
 
                   <div style={{ padding: "1.5rem" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}>
                       <div style={{ display: 'flex', flexDirection: 'column' }}>
                         <span className="muted" style={{ fontSize: '0.85rem' }}>Appointments</span>
-                        <span style={{ fontSize: '1.5rem', fontWeight: 700 }}>{group.appointments.length}</span>
+                        <span style={{ fontSize: '1.5rem', fontWeight: 700 }}>{group.totalAppointments}</span>
                       </div>
                       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
                         <span className="muted" style={{ fontSize: '0.85rem' }}>Checked In</span>
-                        <span style={{ fontSize: '1.5rem', fontWeight: 700, color: "#22c55e" }}>{checkedInCount}</span>
+                        <span style={{ fontSize: '1.5rem', fontWeight: 700, color: "#22c55e" }}>{group.checkedInCount}</span>
                       </div>
                     </div>
 
@@ -539,8 +557,7 @@ export default function ReceptionistDashboard() {
                     </div>
                   </div>
                 </div>
-              );
-            })}
+              ))}
           </div>
         )}
       </div>
@@ -611,8 +628,7 @@ export default function ReceptionistDashboard() {
                 doctorId: selectedDoctor,
                 scheduleId: selectedScheduleId,
                 appointmentType: appointmentType,
-                appointmentDate: appointmentDate,
-                feePaid: fee
+                appointmentDate: appointmentDate
               });
 
               const appointmentResponse = await receptionApi.bookAppointmentForPatient({
@@ -620,8 +636,7 @@ export default function ReceptionistDashboard() {
                 doctorId: selectedDoctor,
                 scheduleId: selectedScheduleId,
                 appointmentType: appointmentType,
-                appointmentDate: appointmentDate,
-                feePaid: fee
+                appointmentDate: appointmentDate
               });
 
               console.log("✅ Appointment booked:", appointmentResponse);
@@ -1017,6 +1032,149 @@ export default function ReceptionistDashboard() {
                   </div>
                 )}
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Patient List */}
+      {selectedDoctorGroup && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            backgroundColor: "rgba(0,0,0,0.7)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000,
+            padding: "1rem",
+            overflowY: "auto"
+          }}
+          onClick={() => {
+            setSelectedDoctorGroup(null);
+            setSearchPhone("");
+          }}
+        >
+          <div
+            className="card"
+            style={{
+              maxWidth: "700px",
+              width: "100%",
+              maxHeight: "90vh",
+              overflow: "hidden",
+              display: "flex",
+              flexDirection: "column"
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="card-header" style={{ padding: "1.5rem", borderBottom: "1px solid var(--border-subtle)" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div>
+                  <h3 style={{ margin: 0, marginBottom: "0.25rem" }}>{selectedDoctorGroup.doctorName}</h3>
+                  <p className="muted" style={{ margin: 0 }}>{selectedDoctorGroup.totalAppointments} appointments today</p>
+                </div>
+                <button
+                  className="btn-secondary"
+                  onClick={() => {
+                    setSelectedDoctorGroup(null);
+                    setSearchPhone("");
+                  }}
+                  style={{ padding: "0.5rem 1rem" }}
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+
+            {/* Search by Phone */}
+            <div style={{ padding: "1rem 1.5rem", borderBottom: "1px solid var(--border-subtle" }}>
+              <input
+                type="text"
+                placeholder="Search Patient by Phone Number..."
+                value={searchPhone}
+                onChange={(e) => setSearchPhone(e.target.value)}
+                style={{
+                  width: "100%",
+                  padding: "0.75rem",
+                  borderRadius: "var(--radius-md)",
+                  border: "1px solid var(--border-subtle)",
+                  fontSize: "1rem"
+                }}
+              />
+            </div>
+
+            {/* Patients List */}
+            <div style={{ flex: 1, overflowY: "auto", padding: "1rem 1.5rem" }}>
+              <h4 style={{ marginBottom: "1rem" }}>Patients List</h4>
+              {selectedDoctorGroup.appointments
+                .filter(appt => !searchPhone || appt.phoneNumber.includes(searchPhone))
+                .map((appt) => (
+                  <div
+                    key={appt.id}
+                    style={{
+                      padding: "1rem",
+                      border: "1px solid var(--border-subtle)",
+                      borderRadius: "var(--radius-md)",
+                      marginBottom: "0.75rem",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center"
+                    }}
+                  >
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 600, fontSize: "1.1rem", marginBottom: "0.25rem" }}>
+                        {appt.patientName}
+                      </div>
+                      <div className="muted" style={{ fontSize: "0.9rem" }}>
+                        {new Date(appt.appointmentTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })} - {appt.appointmentType}
+                      </div>
+                      <div className="muted" style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                        {appt.phoneNumber}
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+                      <span
+                        style={{
+                          padding: "0.375rem 0.75rem",
+                          borderRadius: "var(--radius-sm)",
+                          fontSize: "0.85rem",
+                          fontWeight: 600,
+                          backgroundColor: appt.status === "Confirmed" ? "#22c55e20" : "#f59e0b20",
+                          color: appt.status === "Confirmed" ? "#22c55e" : "#f59e0b"
+                        }}
+                      >
+                        {appt.status}
+                      </span>
+                      {appt.status === "Pending" && (
+                        <button
+                          className="btn-primary"
+                          onClick={async () => {
+                            try {
+                              await receptionApi.checkInPatient(appt.id);
+                              alert("Patient checked in successfully!");
+                              // Refresh dashboard
+                              const response = await receptionApi.getDashboard();
+                              if (response.success) {
+                                setDoctorGroups(response.data.doctorGroups || []);
+                                // Update selected group
+                                const updatedGroup = response.data.doctorGroups.find(g => g.doctorId === selectedDoctorGroup.doctorId);
+                                if (updatedGroup) {
+                                  setSelectedDoctorGroup(updatedGroup);
+                                }
+                              }
+                            } catch (error) {
+                              alert("Error: " + error.message);
+                            }
+                          }}
+                          style={{ padding: "0.5rem 1rem", fontSize: "0.9rem" }}
+                        >
+                          Confirm
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
             </div>
           </div>
         </div>

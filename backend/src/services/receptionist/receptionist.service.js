@@ -35,7 +35,7 @@ class ReceptionistService {
 
   /**
    * Book appointment for patient
-   * @param data {patientId, doctorId, scheduleId, appointmentType, feePaid}
+   * @param data {patientId, doctorId, scheduleId, appointmentDate, appointmentType}
    */
   async bookAppointment(data) {
     // Check if schedule has available slots
@@ -47,10 +47,11 @@ class ReceptionistService {
       throw new NotFoundError('Schedule');
     }
 
-    // Count existing appointments
+    // Count existing appointments for this schedule on the appointment date
     const appointmentCount = await prisma.appointment.count({
       where: {
         scheduleId: data.scheduleId,
+        appointmentDate: new Date(data.appointmentDate),
         status: { not: 'Cancelled' }
       }
     });
@@ -59,8 +60,19 @@ class ReceptionistService {
       throw new ValidationError('Schedule is full');
     }
 
-    // Create appointment
-    return await appointmentService.create(data);
+    // Create appointment (no email notification for receptionist bookings - walk-in patients)
+    const appointment = await prisma.appointment.create({
+      data: {
+        patientId: parseInt(data.patientId),
+        doctorId: parseInt(data.doctorId),
+        scheduleId: parseInt(data.scheduleId),
+        appointmentDate: new Date(data.appointmentDate),
+        appointmentType: data.appointmentType,
+        status: 'Pending'
+      }
+    });
+
+    return appointment;
   }
 
   /**

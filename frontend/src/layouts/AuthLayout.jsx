@@ -6,7 +6,7 @@ export default function AuthLayout() {
       <div className="auth-hero">
         <div className="auth-gradient" />
         <div className="auth-hero-content">
-          <h1>CarePoint Clinic</h1>
+          <h1>LifeCare Clinic</h1>
           <p>Book, manage, and track your medical appointments in seconds.</p>
           <ul>
             <li>Online booking & cancellations</li>
@@ -24,7 +24,6 @@ export default function AuthLayout() {
           </div>
           <Outlet />
         </div>
-        <p className="auth-footer">For demo use only · Frontend prototype</p>
       </div>
     </div>
   );

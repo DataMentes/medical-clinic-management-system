@@ -59,7 +59,7 @@ class PatientController {
    */
   async bookAppointment(req, res, next) {
     try {
-      const { doctorId, scheduleId, appointmentDate, appointmentType, feePaid } = req.body;
+      const { doctorId, scheduleId, appointmentDate, appointmentType } = req.body;
       const userId = req.user.userId; // From auth middleware
 
       // Validation
@@ -121,8 +121,7 @@ class PatientController {
         appointmentDate,
         appointmentDateParsed: new Date(appointmentDate),
         appointmentType,
-        status: 'Pending',
-        feePaid: feePaid || 0
+        status: 'Pending'
       });
 
       const appointment = await prisma.appointment.create({
@@ -132,8 +131,7 @@ class PatientController {
           scheduleId: parseInt(scheduleId),
           appointmentDate: new Date(appointmentDate),
           appointmentType,
-          status: 'Pending',
-          feePaid: feePaid || 0
+          status: 'Pending'
         },
         include: {
           doctor: {
@@ -166,13 +164,45 @@ class PatientController {
         }
       });
 
-      emailService.sendAppointmentConfirmation(
-        user.email,
-        user.person.fullName,
-        appointment
-      ).catch(err => {
-        console.error('Failed to send appointment email:', err.message);
-      });
+      // Only send email if user has email address
+      if (user?.email) {
+        try {
+          // Format time from schedule
+          const formatTime = (timeValue) => {
+            if (timeValue instanceof Date) {
+              return timeValue.toISOString().substring(11, 16);
+            }
+            if (typeof timeValue === 'string' && timeValue.includes('T')) {
+              return timeValue.split('T')[1].substring(0, 5);
+            }
+            return String(timeValue).substring(0, 5);
+          };
+
+          const emailData = {
+            patientEmail: user.email,
+            patientName: user.person.fullName,
+            doctorName: appointment.doctor.person.fullName,
+            date: new Date(appointmentDate).toLocaleDateString('en-US', { 
+              weekday: 'long', 
+              year: 'numeric', 
+              month: 'long', 
+              day: 'numeric' 
+            }),
+            time: `${formatTime(appointment.schedule.startTime)} - ${formatTime(appointment.schedule.endTime)}`,
+            room: appointment.schedule.room.roomName,
+            appointmentType
+          };
+
+          console.log('📧 Sending confirmation email to:', user.email);
+          await emailService.sendAppointmentConfirmation(emailData);
+          console.log('✅ Email sent successfully');
+        } catch (emailError) {
+          console.error('❌ Failed to send email:', emailError.message);
+          // Don't fail appointment if email fails
+        }
+      } else {
+        console.log('⚠️ User has no email address, skipping notification');
+      }
 
       return res.status(201).json({
         success: true,

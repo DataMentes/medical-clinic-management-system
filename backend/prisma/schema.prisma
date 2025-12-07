@@ -106,21 +106,17 @@ model DoctorSchedule {
 }
 
 model Appointment {
-  id                  Int                    @id @default(autoincrement()) @map("appointmentid")
-  patientId           Int                    @map("patientid")
-  scheduleId          Int                    @map("scheduleid")
-  doctorId            Int                    @map("doctorid")
-  parentAppointmentId Int?                   @map("parentappointmentid")
-  appointmentType     AppointmentTypeEnum    @map("appointmenttype")
-  status              AppointmentStatusEnum? @default(Pending) @map("status")
-  feePaid             Decimal                @map("feepaid") @db.Decimal(10, 2)
-  appointmentDate     DateTime               @map("appointmentdate") @db.Date
-  doctor              Doctor                 @relation(fields: [doctorId], references: [id], onDelete: Cascade)
-  parentAppt          Appointment?           @relation("FollowUp", fields: [parentAppointmentId], references: [id])
-  followUpAppts       Appointment[]          @relation("FollowUp")
-  patient             Patient                @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  schedule            DoctorSchedule         @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
-  medicalRecord       MedicalRecord[]
+  id              Int                    @id @default(autoincrement()) @map("appointmentid")
+  patientId       Int                    @map("patientid")
+  scheduleId      Int                    @map("scheduleid")
+  doctorId        Int                    @map("doctorid")
+  appointmentType AppointmentTypeEnum    @map("appointmenttype")
+  status          AppointmentStatusEnum? @default(Pending) @map("status")
+  appointmentDate DateTime               @map("appointmentdate") @db.Date
+  doctor          Doctor                 @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  patient         Patient                @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  schedule        DoctorSchedule         @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  medicalRecord   MedicalRecord[]
 
   @@map("appointments")
 }

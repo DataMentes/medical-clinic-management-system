@@ -3,19 +3,19 @@ import PageHeader from "../components/PageHeader.jsx";
 import DataTable from "../components/DataTable.jsx";
 import CRUDModal from "../components/CRUDModal.jsx";
 import ConfirmDialog from "../components/ConfirmDialog.jsx";
-
-const DOCTORS_KEY = "doctorsData";
-const SPECIALTIES = [
-  "Cardiology",
-  "Dermatology",
-  "Neurology",
-  "Orthopedics",
-  "Pediatrics",
-  "General Medicine"
-];
+import { 
+  getAllDoctors, 
+  createDoctor, 
+  updateDoctor, 
+  deleteDoctor 
+} from "../api/admin.api.js";
+import { getAllSpecialties } from "../api/admin.api.js";
 
 export default function ManageDoctors() {
   const [doctors, setDoctors] = useState([]);
+  const [specialties, setSpecialties] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [showModal, setShowModal] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
@@ -25,43 +25,49 @@ export default function ManageDoctors() {
     email: "",
     phone: "",
     password: "",
-    gender: "male",
-    specialty: "",
+    gender: "Male",
+    specialtyId: "",
     examinationFee: "",
     consultationFee: "",
     biography: ""
   });
 
-  // Load data from localStorage
   useEffect(() => {
-    const savedDoctors = JSON.parse(localStorage.getItem(DOCTORS_KEY) || "[]");
-    if (savedDoctors.length === 0) {
-      const defaultDoctors = [
-        {
-          id: 1,
-          fullName: "Dr. Omar Hassan",
-          email: "omar@clinic.com",
-          gender: "male",
-          specialty: "Cardiology",
-          examinationFee: 500,
-          consultationFee: 300
-        },
-        {
-          id: 2,
-          fullName: "Dr. Lina Mohamed",
-          email: "lina@clinic.com",
-          gender: "female",
-          specialty: "Dermatology",
-          examinationFee: 400,
-          consultationFee: 250
-        }
-      ];
-      setDoctors(defaultDoctors);
-      localStorage.setItem(DOCTORS_KEY, JSON.stringify(defaultDoctors));
-    } else {
-      setDoctors(savedDoctors);
-    }
+    fetchDoctorsAndSpecialties();
   }, []);
+
+  async function fetchDoctorsAndSpecialties() {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      // Fetch both doctors and specialties in parallel
+      const [doctorsResponse, specialtiesResponse] = await Promise.all([
+        getAllDoctors(),
+        getAllSpecialties(1, 100) // Get all specialties (up to 100)
+      ]);
+      
+      // Safety checks for null/undefined data
+      if (doctorsResponse && doctorsResponse.data && doctorsResponse.data.doctors) {
+        setDoctors(doctorsResponse.data.doctors);
+      } else {
+        console.warn('No doctors data received:', doctorsResponse);
+        setDoctors([]);
+      }
+      
+      if (specialtiesResponse && specialtiesResponse.data && specialtiesResponse.data.specialties) {
+        setSpecialties(specialtiesResponse.data.specialties);
+      } else {
+        console.warn('No specialties data received:', specialtiesResponse);
+        setSpecialties([]);
+      }
+    } catch (err) {
+      console.error('Failed to fetch data:', err);
+      setError(err.message || 'Failed to load doctors');
+    } finally {
+      setLoading(false);
+    }
+  }
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -78,8 +84,8 @@ export default function ManageDoctors() {
       email: "",
       phone: "",
       password: "",
-      gender: "male",
-      specialty: "",
+      gender: "Male",
+      specialtyId: "",
       examinationFee: "",
       consultationFee: "",
       biography: ""
@@ -89,13 +95,14 @@ export default function ManageDoctors() {
 
   const handleEdit = (doctor) => {
     setEditingDoctor(doctor);
+    
     setFormData({
       fullName: doctor.fullName,
       email: doctor.email,
-      phone: doctor.phone || "",
+      phone: doctor.phoneNumber || "",
       password: "",
-      gender: doctor.gender || "male",
-      specialty: doctor.specialty,
+      gender: doctor.gender || "Male",
+      specialtyId: doctor.specialtyId?.toString() || "", // Use specialtyId directly from backend
       examinationFee: doctor.examinationFee?.toString() || "",
       consultationFee: doctor.consultationFee?.toString() || "",
       biography: doctor.biography || ""
@@ -108,68 +115,49 @@ export default function ManageDoctors() {
     setShowDeleteConfirm(true);
   };
 
-  const handleDeleteConfirm = () => {
-    const updated = doctors.filter((doctor) => doctor.id !== deletingId);
-    setDoctors(updated);
-    localStorage.setItem(DOCTORS_KEY, JSON.stringify(updated));
-    setDeletingId(null);
+  const handleDeleteConfirm = async () => {
+    try {
+      await deleteDoctor(deletingId);
+      setShowDeleteConfirm(false);
+      setDeletingId(null);
+      await fetchDoctorsAndSpecialties();
+    } catch (err) {
+      console.error('Failed to delete doctor:', err);
+      alert(err.message || 'Failed to delete doctor');
+    }
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
 
-    if (editingDoctor) {
-      // Update
-      const updated = doctors.map((doctor) =>
-        doctor.id === editingDoctor.id
-          ? {
-            ...doctor,
-            fullName: formData.fullName,
-            email: formData.email,
-            phone: formData.phone,
-            gender: formData.gender,
-            specialty: formData.specialty,
-            examinationFee: parseFloat(formData.examinationFee),
-            consultationFee: parseFloat(formData.consultationFee),
-            biography: formData.biography,
-            ...(formData.password && { password: formData.password })
-          }
-          : doctor
-      );
-      setDoctors(updated);
-      localStorage.setItem(DOCTORS_KEY, JSON.stringify(updated));
-    } else {
-      // Add new
-      const newDoctor = {
-        id: Date.now(),
-        fullName: formData.fullName,
-        email: formData.email,
-        phone: formData.phone,
-        password: formData.password,
-        gender: formData.gender,
-        specialty: formData.specialty,
-        examinationFee: parseFloat(formData.examinationFee),
-        consultationFee: parseFloat(formData.consultationFee),
-        biography: formData.biography
-      };
-      const updated = [...doctors, newDoctor];
-      setDoctors(updated);
-      localStorage.setItem(DOCTORS_KEY, JSON.stringify(updated));
-    }
+    try {
+      if (editingDoctor) {
+        // Update existing doctor
+        await updateDoctor(editingDoctor.id, formData);
+      } else {
+        // Create new doctor
+        await createDoctor(formData);
+      }
 
-    setShowModal(false);
-    setFormData({
-      fullName: "",
-      email: "",
-      phone: "",
-      password: "",
-      gender: "male",
-      specialty: "",
-      examinationFee: "",
-      consultationFee: "",
-      biography: ""
-    });
-    setEditingDoctor(null);
+      setShowModal(false);
+      setFormData({
+        fullName: "",
+        email: "",
+        phone: "",
+        password: "",
+        gender: "Male",
+        specialtyId: "",
+        examinationFee: "",
+        consultationFee: "",
+        biography: ""
+      });
+      setEditingDoctor(null);
+      
+      await fetchDoctorsAndSpecialties();
+    } catch (err) {
+      console.error('Failed to save doctor:', err);
+      alert(err.message || 'Failed to save doctor');
+    }
   };
 
   // Table columns configuration
@@ -180,7 +168,7 @@ export default function ManageDoctors() {
     {
       key: 'fees',
       label: 'Fees',
-      render: (_, row) => `Exam: ${row.examinationFee} EGP · Consult: ${row.consultationFee} EGP`
+      render: (_, row) => `Exam: ${row.examinationFee || 0} EGP · Consult: ${row.consultationFee || 0} EGP`
     }
   ];
 
@@ -190,12 +178,53 @@ export default function ManageDoctors() {
     { name: 'email', label: 'Email', type: 'email', required: true, placeholder: 'doctor@clinic.com' },
     { name: 'phone', label: 'Phone', type: 'tel', required: true, placeholder: '+20 100 123 4567' },
     { name: 'password', label: 'Password', type: 'password', required: !editingDoctor, placeholder: editingDoctor ? 'Leave empty to keep current' : 'Enter password' },
-    { name: 'gender', label: 'Gender', type: 'select', required: true, options: [{ value: 'male', label: 'Male' }, { value: 'female', label: 'Female' }] },
-    { name: 'specialty', label: 'Specialty', type: 'select', required: true, options: SPECIALTIES },
+    { name: 'gender', label: 'Gender', type: 'select', required: true, options: [{ value: 'Male', label: 'Male' }, { value: 'Female', label: 'Female' }] },
+    { 
+      name: 'specialtyId', 
+      label: 'Specialty', 
+      type: 'select', 
+      required: true, 
+      options: specialties.map(s => ({ value: s.id.toString(), label: s.name }))
+    },
     { name: 'examinationFee', label: 'Examination Fee (EGP)', type: 'number', required: true, min: 0, step: 0.01, placeholder: '500', gridColumn: true },
     { name: 'consultationFee', label: 'Consultation Fee (EGP)', type: 'number', required: true, min: 0, step: 0.01, placeholder: '300', gridColumn: true },
     { name: 'biography', label: 'Biography', type: 'textarea', rows: 4, placeholder: "Doctor's biography and qualifications..." }
   ];
+
+  if (loading) {
+    return (
+      <div className="page">
+        <PageHeader
+          title="Manage Doctors"
+          description="Add, edit, or remove doctor accounts."
+        />
+        <div className="card" style={{ padding: '2rem', textAlign: 'center' }}>
+          <p>Loading doctors...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="page">
+        <PageHeader
+          title="Manage Doctors"
+          description="Add, edit, or remove doctor accounts."
+        />
+        <div className="card" style={{ padding: '2rem', textAlign: 'center', color: '#e74c3c' }}>
+          <p>⚠️ {error}</p>
+          <button 
+            className="btn btn-primary" 
+            onClick={fetchDoctorsAndSpecialties}
+            style={{ marginTop: '1rem' }}
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="page">

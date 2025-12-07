@@ -3,20 +3,9 @@ import PageHeader from "../components/PageHeader.jsx";
 import DataTable from "../components/DataTable.jsx";
 import CRUDModal from "../components/CRUDModal.jsx";
 import ConfirmDialog from "../components/ConfirmDialog.jsx";
-
-const SCHEDULES_KEY = "schedulesData";
-const DOCTORS_KEY = "doctorsData";
-const ROOMS_KEY = "roomsData";
-
-const DAYS = [
-  "Monday",
-  "Tuesday",
-  "Wednesday",
-  "Thursday",
-  "Friday",
-  "Saturday",
-  "Sunday"
-];
+import { getAllSchedules, createSchedule, updateSchedule, deleteSchedule, getAllDoctors, getAllRooms } from "../api/admin.api.js";
+import { transformSchedulesFromAPI, transformScheduleToAPI } from "../utils/scheduleTransform.js";
+import { WEEKDAY_OPTIONS } from "../constants/schedules.js";
 
 export default function ManageSchedules() {
   const [schedules, setSchedules] = useState([]);
@@ -26,6 +15,8 @@ export default function ManageSchedules() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
   const [editingSchedule, setEditingSchedule] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [formData, setFormData] = useState({
     doctorId: "",
     roomId: "",
@@ -35,56 +26,60 @@ export default function ManageSchedules() {
     maxCapacity: ""
   });
 
-  // Load doctors and rooms
+  // Load schedules from API
   useEffect(() => {
-    const savedDoctors = JSON.parse(localStorage.getItem(DOCTORS_KEY) || "[]");
-    setDoctors(savedDoctors);
-
-    const savedRooms = JSON.parse(localStorage.getItem(ROOMS_KEY) || "[]");
-    if (savedRooms.length === 0) {
-      const defaultRooms = [
-        { id: 1, roomName: "Room 101" },
-        { id: 2, roomName: "Room 102" },
-        { id: 3, roomName: "Room 201" },
-        { id: 4, roomName: "Room 202" }
-      ];
-      setRooms(defaultRooms);
-      localStorage.setItem(ROOMS_KEY, JSON.stringify(defaultRooms));
-    } else {
-      setRooms(savedRooms);
-    }
+    fetchSchedules();
   }, []);
 
-  // Load schedules
+  // Load doctors and rooms from API
   useEffect(() => {
-    const savedSchedules = JSON.parse(localStorage.getItem(SCHEDULES_KEY) || "[]");
-    if (savedSchedules.length === 0) {
-      const defaultSchedules = [
-        {
-          id: 1,
-          doctorId: 1,
-          roomId: 1,
-          day: "Monday",
-          startTime: "09:00",
-          endTime: "12:00",
-          maxCapacity: 10
-        },
-        {
-          id: 2,
-          doctorId: 2,
-          roomId: 2,
-          day: "Tuesday",
-          startTime: "10:00",
-          endTime: "14:00",
-          maxCapacity: 8
-        }
-      ];
-      setSchedules(defaultSchedules);
-      localStorage.setItem(SCHEDULES_KEY, JSON.stringify(defaultSchedules));
-    } else {
-      setSchedules(savedSchedules);
-    }
+    fetchDoctorsAndRooms();
   }, []);
+
+  const fetchSchedules = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const response = await getAllSchedules(1, 100); // Get all schedules
+      
+      console.log('API Response:', response);
+      
+      if (response.success && response.data) {
+        console.log('Raw schedules from API:', response.data.schedules);
+        
+        // Transform API data to frontend format
+        const transformedSchedules = transformSchedulesFromAPI(response.data.schedules);
+        
+        console.log('Transformed schedules:', transformedSchedules);
+        
+        setSchedules(transformedSchedules);
+      }
+    } catch (err) {
+      console.error('Error fetching schedules:', err);
+      setError(err.message || 'Failed to load schedules');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchDoctorsAndRooms = async () => {
+    try {
+      const [doctorsResponse, roomsResponse] = await Promise.all([
+        getAllDoctors(1, 100),
+        getAllRooms(1, 100)
+      ]);
+
+      if (doctorsResponse.success && doctorsResponse.data) {
+        setDoctors(doctorsResponse.data.doctors);
+      }
+
+      if (roomsResponse.success && roomsResponse.data) {
+        setRooms(roomsResponse.data.rooms);
+      }
+    } catch (err) {
+      console.error('Error fetching doctors/rooms:', err);
+    }
+  };
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -122,74 +117,77 @@ export default function ManageSchedules() {
     setShowDeleteConfirm(true);
   };
 
-  const handleDeleteConfirm = () => {
-    const updated = schedules.filter((schedule) => schedule.id !== deletingId);
-    setSchedules(updated);
-    localStorage.setItem(SCHEDULES_KEY, JSON.stringify(updated));
-    setDeletingId(null);
-  };
-
-  const handleSubmit = (e) => {
-    e.preventDefault();
-
-    if (editingSchedule) {
-      const updated = schedules.map((schedule) =>
-        schedule.id === editingSchedule.id
-          ? {
-            ...schedule,
-            doctorId: parseInt(formData.doctorId),
-            roomId: parseInt(formData.roomId),
-            day: formData.day,
-            startTime: formData.startTime,
-            endTime: formData.endTime,
-            maxCapacity: parseInt(formData.maxCapacity)
-          }
-          : schedule
-      );
-      setSchedules(updated);
-      localStorage.setItem(SCHEDULES_KEY, JSON.stringify(updated));
-    } else {
-      const newSchedule = {
-        id: Date.now(),
-        doctorId: parseInt(formData.doctorId),
-        roomId: parseInt(formData.roomId),
-        day: formData.day,
-        startTime: formData.startTime,
-        endTime: formData.endTime,
-        maxCapacity: parseInt(formData.maxCapacity)
-      };
-      const updated = [...schedules, newSchedule];
-      setSchedules(updated);
-      localStorage.setItem(SCHEDULES_KEY, JSON.stringify(updated));
+  const handleDeleteConfirm = async () => {
+    try {
+      await deleteSchedule(deletingId);
+      
+      // Refresh schedules after deletion
+      await fetchSchedules();
+      
+      setShowDeleteConfirm(false);
+      setDeletingId(null);
+    } catch (err) {
+      console.error('Error deleting schedule:', err);
+      alert(err.message || 'Failed to delete schedule');
     }
-
-    setShowModal(false);
-    setFormData({
-      doctorId: "",
-      roomId: "",
-      day: "",
-      startTime: "",
-      endTime: "",
-      maxCapacity: ""
-    });
-    setEditingSchedule(null);
   };
 
-  // Helper functions
-  const getDoctorName = (doctorId) => {
-    const doctor = doctors.find((d) => d.id === doctorId);
-    return doctor ? doctor.fullName : "Unknown";
-  };
-
-  const getRoomName = (roomId) => {
-    const room = rooms.find((r) => r.id === roomId);
-    return room ? (room.roomName || room.name) : "Unknown";
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    
+    try {
+      // Transform form data to API format (day → weekDay, add seconds to time)
+      const apiData = transformScheduleToAPI(formData);
+      
+      if (editingSchedule) {
+        // Update existing schedule
+        await updateSchedule(editingSchedule.id, apiData);
+      } else {
+        // Create new schedule
+        await createSchedule(apiData);
+      }
+      
+      // Refresh schedules after save
+      await fetchSchedules();
+      
+      // Close modal and reset form
+      setShowModal(false);
+      setFormData({
+        doctorId: "",
+        roomId: "",
+        day: "",
+        startTime: "",
+        endTime: "",
+        maxCapacity: ""
+      });
+      setEditingSchedule(null);
+    } catch (err) {
+      console.error('Error saving schedule:', err);
+      
+      // Show user-friendly error messages in English
+      let errorMessage = err.message || 'Failed to save schedule';
+      
+      // Check for specific error types
+      if (errorMessage.includes('already has a schedule for this day')) {
+        errorMessage = 'This doctor already has a schedule for this day. Please choose another day or edit the existing schedule.';
+      } else if (errorMessage.includes('Unique constraint')) {
+        errorMessage = 'This doctor already has a schedule for this day. You cannot add multiple schedules for the same doctor on the same day.';
+      } else if (errorMessage.includes('startTime must be before endTime')) {
+        errorMessage = 'Start time must be before end time.';
+      } else if (errorMessage.includes('Invalid weekDay')) {
+        errorMessage = 'Invalid day selected. Please choose a day from the list.';
+      } else if (errorMessage.includes('maxCapacity')) {
+        errorMessage = 'Max capacity must be a positive number.';
+      }
+      
+      alert(errorMessage);
+    }
   };
 
   // Table columns configuration
   const columns = [
-    { key: 'doctorName', label: 'Doctor Name', render: (_, row) => getDoctorName(row.doctorId) },
-    { key: 'roomName', label: 'Room Name', render: (_, row) => getRoomName(row.roomId) },
+    { key: 'doctorName', label: 'Doctor Name' },
+    { key: 'roomName', label: 'Room Name' },
     { key: 'day', label: 'Day' },
     { key: 'startTime', label: 'Start Time' },
     { key: 'endTime', label: 'End Time' },
@@ -210,19 +208,54 @@ export default function ManageSchedules() {
       label: 'Room',
       type: 'select',
       required: true,
-      options: rooms.map(r => ({ value: r.id, label: r.roomName || r.name }))
+      options: rooms.map(r => ({ value: r.id, label: r.roomName }))
     },
     {
       name: 'day',
       label: 'Day',
       type: 'select',
       required: true,
-      options: DAYS
+      options: WEEKDAY_OPTIONS  // Uses full day names from constants
     },
     { name: 'startTime', label: 'Start Time', type: 'time', required: true, gridColumn: true },
     { name: 'endTime', label: 'End Time', type: 'time', required: true, gridColumn: true },
     { name: 'maxCapacity', label: 'Max Capacity', type: 'number', required: true, min: 1, placeholder: '10' }
   ];
+
+  if (loading) {
+    return (
+      <div className="page">
+        <PageHeader
+          title="Manage Schedules"
+          description="Add, edit, or remove doctor schedules."
+        />
+        <div className="card">
+          <div className="card-header">
+            <h3>Loading schedules...</h3>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="page">
+        <PageHeader
+          title="Manage Schedules"
+          description="Add, edit, or remove doctor schedules."
+        />
+        <div className="card">
+          <div className="card-header">
+            <h3>Error: {error}</h3>
+            <button onClick={fetchSchedules} className="btn btn-primary">
+              Retry
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="page">

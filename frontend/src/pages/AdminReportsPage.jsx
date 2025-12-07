@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import * as adminAPI from "../api/admin.api";
 
 const REPORT_TYPES = [
   "Appointments Report",
@@ -8,53 +9,16 @@ const REPORT_TYPES = [
   "Specialty Report"
 ];
 
-// Mock data generators based on report type
-const generateReportData = (reportType, startDate, endDate) => {
-  // في التطبيق الحقيقي، هنا هيكون API call
-  // محاكاة البيانات بناءً على نوع التقرير
-  const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-  
-  switch (reportType) {
-    case "Appointments Report":
-      return days.map((day, index) => ({
-        label: day,
-        value: Math.floor(Math.random() * 30) + 10
-      }));
-    case "Patients Report":
-      return days.map((day, index) => ({
-        label: day,
-        value: Math.floor(Math.random() * 20) + 5
-      }));
-    case "Doctors Report":
-      return days.map((day, index) => ({
-        label: day,
-        value: Math.floor(Math.random() * 15) + 3
-      }));
-    case "Revenue Report":
-      return days.map((day, index) => ({
-        label: day,
-        value: Math.floor(Math.random() * 5000) + 2000
-      }));
-    case "Specialty Report":
-      return [
-        { label: "Cardiology", value: 45 },
-        { label: "Dermatology", value: 32 },
-        { label: "Neurology", value: 28 },
-        { label: "Orthopedics", value: 35 },
-        { label: "Pediatrics", value: 40 }
-      ];
-    default:
-      return days.map((day) => ({ label: day, value: 0 }));
-  }
-};
-
 export default function AdminReportsPage() {
   const [reportType, setReportType] = useState("Appointments Report");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [reportData, setReportData] = useState([]);
+  const [summary, setSummary] = useState({ total: 0, average: 0, peak: { label: '', value: 0 } });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
 
-  // تعيين التاريخ الافتراضي (آخر 7 أيام)
+  // Set default dates (last 7 days)
   useEffect(() => {
     const today = new Date();
     const lastWeek = new Date(today);
@@ -64,30 +28,69 @@ export default function AdminReportsPage() {
     setEndDate(today.toISOString().split("T")[0]);
   }, []);
 
-  // توليد البيانات عند تغيير نوع التقرير أو التاريخ
+  // Auto-generate report when dates and type are set
   useEffect(() => {
-    if (startDate && endDate) {
-      const data = generateReportData(reportType, startDate, endDate);
-      setReportData(data);
+    if (startDate && endDate && reportType) {
+      handleGenerateReport();
     }
-  }, [reportType, startDate, endDate]);
+  }, [reportType]);
 
-  const handleGenerateReport = (e) => {
-    e.preventDefault();
+  const handleGenerateReport = async (e) => {
+    if (e) e.preventDefault();
+    
     if (!startDate || !endDate) {
-      alert("Please select both start and end dates");
+      setError("Please select both start and end dates");
       return;
     }
+    
     if (new Date(startDate) > new Date(endDate)) {
-      alert("Start date must be before end date");
+      setError("Start date must be before end date");
       return;
     }
-    const data = generateReportData(reportType, startDate, endDate);
-    setReportData(data);
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      let response;
+      
+      // Map report type to API function
+      switch (reportType) {
+        case "Appointments Report":
+          response = await adminAPI.getAppointmentsReport(startDate, endDate);
+          break;
+        case "Patients Report":
+          response = await adminAPI.getPatientsReport(startDate, endDate);
+          break;
+        case "Doctors Report":
+          response = await adminAPI.getDoctorsReport(startDate, endDate);
+          break;
+        case "Revenue Report":
+          response = await adminAPI.getRevenueReport(startDate, endDate);
+          break;
+        case "Specialty Report":
+          response = await adminAPI.getSpecialtyReport(startDate, endDate);
+          break;
+        default:
+          setError("Unknown report type");
+          return;
+      }
+
+      if (response.success && response.data) {
+        setReportData(response.data.data || []);
+        setSummary(response.data.summary || { total: 0, average: 0, peak: { label: 'N/A', value: 0 } });
+      } else {
+        setError("Failed to generate report");
+      }
+    } catch (err) {
+      console.error("Error generating report:", err);
+      setError(err.response?.data?.error || "Failed to load report data");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const max = reportData.length > 0 ? Math.max(...reportData.map((d) => d.value)) : 1;
-  const isSpecialtyReport = reportType === "Specialty Report";
 
   return (
     <div className="page">
@@ -136,12 +139,18 @@ export default function AdminReportsPage() {
             </div>
           </div>
           <div style={{ marginTop: "1rem" }}>
-            <button type="submit" className="btn-primary">
-              Generate Report
+            <button type="submit" className="btn-primary" disabled={loading}>
+              {loading ? "Generating..." : "Generate Report"}
             </button>
           </div>
         </form>
       </div>
+
+      {error && (
+        <div className="card" style={{ marginBottom: "1.5rem", borderLeft: "4px solid var(--danger-color, #e74c3c)" }}>
+          <p style={{ color: "var(--danger-color, #e74c3c)" }}>{error}</p>
+        </div>
+      )}
 
       {reportData.length > 0 && (
         <section className="grid-2">
@@ -175,27 +184,17 @@ export default function AdminReportsPage() {
               <li>
                 <strong>Total:</strong>{" "}
                 {reportType === "Revenue Report"
-                  ? `${reportData.reduce((sum, d) => sum + d.value, 0)} EGP`
-                  : reportData.reduce((sum, d) => sum + d.value, 0)}
+                  ? `${summary.total} EGP`
+                  : summary.total}
               </li>
               <li>
                 <strong>Average:</strong>{" "}
                 {reportType === "Revenue Report"
-                  ? `${Math.round(
-                      reportData.reduce((sum, d) => sum + d.value, 0) /
-                        reportData.length
-                    )} EGP`
-                  : Math.round(
-                      reportData.reduce((sum, d) => sum + d.value, 0) /
-                        reportData.length
-                    )}
+                  ? `${summary.average} EGP`
+                  : summary.average}
               </li>
               <li>
-                <strong>Peak:</strong>{" "}
-                {reportData.reduce(
-                  (max, d) => (d.value > max.value ? d : max),
-                  reportData[0]
-                )?.label || "N/A"}
+                <strong>Peak:</strong> {summary.peak?.label || 'N/A'}
               </li>
               {reportType === "Revenue Report" && (
                 <li>
@@ -210,7 +209,7 @@ export default function AdminReportsPage() {
         </section>
       )}
 
-      {reportData.length === 0 && (
+      {reportData.length === 0 && !loading && !error && (
         <div className="card">
           <p className="muted" style={{ textAlign: "center", padding: "2rem" }}>
             Select a report type and date range, then click "Generate Report" to view data.
@@ -220,4 +219,3 @@ export default function AdminReportsPage() {
     </div>
   );
 }
-

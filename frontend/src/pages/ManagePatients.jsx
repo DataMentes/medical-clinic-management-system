@@ -3,11 +3,17 @@ import PageHeader from "../components/PageHeader.jsx";
 import DataTable from "../components/DataTable.jsx";
 import CRUDModal from "../components/CRUDModal.jsx";
 import ConfirmDialog from "../components/ConfirmDialog.jsx";
-
-const PATIENTS_KEY = "adminPatientsData";
+import { 
+  getAllPatients, 
+  createPatient, 
+  updatePatient, 
+  deletePatient 
+} from "../api/admin.api.js";
 
 export default function ManagePatients() {
   const [patients, setPatients] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [showModal, setShowModal] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
@@ -17,42 +23,34 @@ export default function ManagePatients() {
     email: "",
     phone: "",
     password: "",
-    gender: "male",
+    gender: "Male",
     yearOfBirth: ""
   });
 
   useEffect(() => {
-    const savedPatients = JSON.parse(localStorage.getItem(PATIENTS_KEY) || "[]");
-    if (savedPatients.length === 0) {
-      const defaultPatients = [
-        {
-          id: 1,
-          fullName: "Ahmed Mohamed",
-          email: "ahmed@example.com",
-          gender: "male",
-          yearOfBirth: "1990"
-        },
-        {
-          id: 2,
-          fullName: "Sara Ali",
-          email: "sara@example.com",
-          gender: "female",
-          yearOfBirth: "1985"
-        },
-        {
-          id: 3,
-          fullName: "Mohamed Hassan",
-          email: "mohamed@example.com",
-          gender: "male",
-          yearOfBirth: "1992"
-        }
-      ];
-      setPatients(defaultPatients);
-      localStorage.setItem(PATIENTS_KEY, JSON.stringify(defaultPatients));
-    } else {
-      setPatients(savedPatients);
-    }
+    fetchPatients();
   }, []);
+
+  async function fetchPatients() {
+    try {
+      setLoading(true);
+      setError(null);
+      const response = await getAllPatients();
+      
+      // Safety check for null/undefined data
+      if (response && response.data && response.data.patients) {
+        setPatients(response.data.patients);
+      } else {
+        console.warn('No patients data received:', response);
+        setPatients([]);
+      }
+    } catch (err) {
+      console.error('Failed to fetch patients:', err);
+      setError(err.message || 'Failed to load patients');
+    } finally {
+      setLoading(false);
+    }
+  }
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -69,7 +67,7 @@ export default function ManagePatients() {
       email: "",
       phone: "",
       password: "",
-      gender: "male",
+      gender: "Male",
       yearOfBirth: ""
     });
     setShowModal(true);
@@ -79,11 +77,11 @@ export default function ManagePatients() {
     setEditingPatient(patient);
     setFormData({
       fullName: patient.fullName,
-      email: patient.email,
-      phone: patient.phone || "",
+      email: patient.email || "", // ✅ Safe access for null email
+      phone: patient.phoneNumber || "",
       password: "",
-      gender: patient.gender || "male",
-      yearOfBirth: patient.yearOfBirth || ""
+      gender: patient.gender || "Male",
+      yearOfBirth: patient.yearOfBirth?.toString() || ""
     });
     setShowModal(true);
   };
@@ -93,66 +91,88 @@ export default function ManagePatients() {
     setShowDeleteConfirm(true);
   };
 
-  const handleDeleteConfirm = () => {
-    const updated = patients.filter((patient) => patient.id !== deletingId);
-    setPatients(updated);
-    localStorage.setItem(PATIENTS_KEY, JSON.stringify(updated));
-    setDeletingId(null);
+  const handleDeleteConfirm = async () => {
+    try {
+      await deletePatient(deletingId);
+      setShowDeleteConfirm(false);
+      setDeletingId(null);
+      await fetchPatients();
+    } catch (err) {
+      console.error('Failed to delete patient:', err);
+      alert(err.message || 'Failed to delete patient');
+    }
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
 
-    if (editingPatient) {
-      const updated = patients.map((patient) =>
-        patient.id === editingPatient.id
-          ? {
-            ...patient,
-            fullName: formData.fullName,
-            email: formData.email,
-            phone: formData.phone,
-            gender: formData.gender,
-            yearOfBirth: formData.yearOfBirth,
-            ...(formData.password && { password: formData.password })
-          }
-          : patient
-      );
-      setPatients(updated);
-      localStorage.setItem(PATIENTS_KEY, JSON.stringify(updated));
-    } else {
-      const newPatient = {
-        id: Date.now(),
-        fullName: formData.fullName,
-        email: formData.email,
-        phone: formData.phone,
-        password: formData.password,
-        gender: formData.gender,
-        yearOfBirth: formData.yearOfBirth
-      };
-      const updated = [...patients, newPatient];
-      setPatients(updated);
-      localStorage.setItem(PATIENTS_KEY, JSON.stringify(updated));
-    }
+    try {
+      if (editingPatient) {
+        await updatePatient(editingPatient.id, formData);
+      } else {
+        await createPatient(formData);
+      }
 
-    setShowModal(false);
-    setFormData({
-      fullName: "",
-      email: "",
-      phone: "",
-      password: "",
-      gender: "male",
-      yearOfBirth: ""
-    });
-    setEditingPatient(null);
+      setShowModal(false);
+      setFormData({
+        fullName: "",
+        email: "",
+        phone: "",
+        password: "",
+        gender: "Male",
+        yearOfBirth: ""
+      });
+      setEditingPatient(null);
+      await fetchPatients();
+    } catch (err) {
+      console.error('Failed to save patient:', err);
+      alert(err.message || 'Failed to save patient');
+    }
   };
 
   const columns = [
-    { key: 'email', label: 'Mail' },
+    { 
+      key: 'email', 
+      label: 'Email',
+      render: (value, row) => {
+        if (!value || !row.hasUserAccount) {
+          return (
+            <span style={{ color: 'var(--text-soft)', fontStyle: 'italic' }}>
+              Not Activated
+            </span>
+          );
+        }
+        return value;
+      }
+    },
     { key: 'fullName', label: 'Name' },
+    { key: 'phoneNumber', label: 'Phone' },
     {
       key: 'yearOfBirth',
       label: 'Year of Birth',
       render: (value) => value || 'N/A'
+    },
+    {
+      key: 'hasUserAccount',
+      label: 'Status',
+      render: (value, row) => {
+        if (!value) {
+          return (
+            <span className="pill pill-warning" style={{ fontSize: '0.75rem' }}>
+              No Account
+            </span>
+          );
+        }
+        const isActive = row.active === 'Yes';
+        return (
+          <span 
+            className={`pill ${isActive ? 'pill-success' : 'pill-soft'}`}
+            style={{ fontSize: '0.75rem' }}
+          >
+            {isActive ? 'Active' : 'Inactive'}
+          </span>
+        );
+      }
     }
   ];
 
@@ -161,9 +181,44 @@ export default function ManagePatients() {
     { name: 'email', label: 'Email', type: 'email', required: true, placeholder: 'patient@example.com' },
     { name: 'phone', label: 'Phone', type: 'tel', required: true, placeholder: '+20 100 123 4567' },
     { name: 'password', label: 'Password', type: 'password', required: !editingPatient, placeholder: editingPatient ? 'Leave empty to keep current' : 'Enter password' },
-    { name: 'gender', label: 'Gender', type: 'select', required: true, options: [{ value: 'male', label: 'Male' }, { value: 'female', label: 'Female' }] },
+    { name: 'gender', label: 'Gender', type: 'select', required: true, options: [{ value: 'Male', label: 'Male' }, { value: 'Female', label: 'Female' }] },
     { name: 'yearOfBirth', label: 'Year of Birth', type: 'number', required: true, placeholder: 'YYYY', min: 1900, max: new Date().getFullYear() }
   ];
+
+  if (loading) {
+    return (
+      <div className="page">
+        <PageHeader
+          title="Manage Patients"
+          description="Add, edit, or remove patient accounts."
+        />
+        <div className="card" style={{ padding: '2rem', textAlign: 'center' }}>
+          <p>Loading patients...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="page">
+        <PageHeader
+          title="Manage Patients"
+          description="Add, edit, or remove patient accounts."
+        />
+        <div className="card" style={{ padding: '2rem', textAlign: 'center', color: '#e74c3c' }}>
+          <p>⚠️ {error}</p>
+          <button 
+            className="btn btn-primary" 
+            onClick={fetchPatients}
+            style={{ marginTop: '1rem' }}
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="page">
@@ -171,7 +226,7 @@ export default function ManagePatients() {
         title="Manage Patients"
         description="Add, edit, or remove patient accounts."
         action={{
-          label: "+  Add Patient",
+          label: "+ Add Patient",
           onClick: handleAdd
         }}
       />

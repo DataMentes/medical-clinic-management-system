@@ -115,7 +115,6 @@ class PatientService {
         appointmentDate: true,
         appointmentType: true,
         status: true,
-        feePaid: true,
         doctor: {
           select: {
             person: {
@@ -167,7 +166,6 @@ class PatientService {
         appointmentDate: true,
         appointmentType: true,
         status: true,
-        feePaid: true,
         doctor: {
           select: {
             person: {

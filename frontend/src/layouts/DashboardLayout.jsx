@@ -7,21 +7,21 @@ const allNavItems = {
     { to: "/patient-dashboard", label: "Patient Dashboard" },
     { to: "/book-appointment", label: "Book Appointment" },
     { to: "/medical-history", label: "Medical History" },
-    { to: "/patient-settings", label: "Settings" }
+    // { to: "/patient-settings", label: "Settings" }
   ],
   patient: [
     { to: "/patient-dashboard", label: "Patient Dashboard" },
     { to: "/book-appointment", label: "Book Appointment" },
     { to: "/medical-history", label: "Medical History" },
-    { to: "/patient-settings", label: "Settings" }
+    // { to: "/patient-settings", label: "Settings" }
   ],
   Doctor: [
     { to: "/doctor-dashboard", label: "Doctor Dashboard" },
-    { to: "/doctor-settings", label: "Settings" }
+    // { to: "/doctor-settings", label: "Settings" }
   ],
   doctor: [
     { to: "/doctor-dashboard", label: "Doctor Dashboard" },
-    { to: "/doctor-settings", label: "Settings" }
+    // { to: "/doctor-settings", label: "Settings" }
   ],
   Admin: [
     { to: "/admin-dashboard", label: "Admin Dashboard" },
@@ -34,7 +34,7 @@ const allNavItems = {
     { to: "/admin-manage-rooms", label: "Manage Rooms" },
     { to: "/admin-manage-specialties", label: "Manage Specialties" },
     { to: "/admin-reports", label: "Reports" },
-    { to: "/admin-settings", label: "Settings" }
+    // { to: "/admin-settings", label: "Settings" }
   ],
   admin: [
     { to: "/admin-dashboard", label: "Admin Dashboard" },
@@ -47,15 +47,15 @@ const allNavItems = {
     { to: "/admin-manage-rooms", label: "Manage Rooms" },
     { to: "/admin-manage-specialties", label: "Manage Specialties" },
     { to: "/admin-reports", label: "Reports" },
-    { to: "/admin-settings", label: "Settings" }
+    // { to: "/admin-settings", label: "Settings" }
   ],
   Receptionist: [
     { to: "/receptionist-dashboard", label: "Dashboard" },
-    { to: "/receptionist-settings", label: "Settings" }
+    // { to: "/receptionist-settings", label: "Settings" }
   ],
   receptionist: [
     { to: "/receptionist-dashboard", label: "Dashboard" },
-    { to: "/receptionist-settings", label: "Settings" }
+    // { to: "/receptionist-settings", label: "Settings" }
   ]
 };
 
@@ -70,7 +70,6 @@ export default function DashboardLayout() {
     // Function to update role from localStorage
     const updateRole = () => {
       const role = localStorage.getItem("userRole") || "Patient";
-      console.log('🔐 User role updated:', role);
       setUserRole(role);
     };
 
@@ -102,7 +101,7 @@ export default function DashboardLayout() {
         <div className="sidebar-brand" style={{ justifyContent: "space-between" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
             <span className="logo-dot" />
-            CarePoint
+            LifeCare
           </div>
           <button
             type="button"

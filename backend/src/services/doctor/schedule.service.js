@@ -3,15 +3,14 @@ const prisma = require('../../config/database');
 class ScheduleService {
   /**
    * Create doctor schedule
-   * @param data {doctorId, weekday, roomId, roundId, startTime, endTime, maxCapacity}
+   * @param data {doctorId, weekDay, roomId, startTime, endTime, maxCapacity}
    */
   async create(data) {
     return await prisma.doctorSchedule.create({
       data: {
         doctorId: data.doctorId,
-        weekday: data.weekday,
+        weekDay: data.weekDay,
         roomId: data.roomId,
-        roundId: data.roundId,
         startTime: data.startTime,
         endTime: data.endTime,
         maxCapacity: data.maxCapacity
@@ -37,7 +36,7 @@ class ScheduleService {
         room: true
       },
       orderBy: [
-        { weekday: 'asc' },
+        { weekDay: 'asc' },
         { startTime: 'asc' }
       ]
     });
@@ -64,11 +63,11 @@ class ScheduleService {
   /**
    * Get doctor schedule by day
    */
-  async getByDoctorAndDay(doctorId, weekday) {
+  async getByDoctorAndDay(doctorId, weekDay) {
     return await prisma.doctorSchedule.findMany({
       where: {
         doctorId,
-        weekday
+        weekDay
       },
       include: {
         room: true
@@ -118,7 +117,7 @@ class ScheduleService {
         room: true
       },
       orderBy: [
-        { weekday: 'asc' },
+        { weekDay: 'asc' },
         { startTime: 'asc' }
       ]
     });

@@ -24,10 +24,10 @@ const ROLES = {
 
 // Role IDs (matching database)
 const ROLE_IDS = {
-  ADMIN: 4,
   DOCTOR: 1,
-  RECEPTIONIST: 3,
-  PATIENT: 2
+  PATIENT: 2,
+  ADMIN: 3,
+  RECEPTIONIST: 4
 };
 
 // Appointment Status

@@ -1,4 +1,5 @@
 const adminService = require('../services/admin/admin.service');
+const analyticsService = require('../services/admin/analytics.service');
 
 class AdminController {
   
@@ -585,6 +586,92 @@ class AdminController {
     }
   }
 
+  // ==================== REPORTS ====================
+
+  async getAppointmentsReport(req, res, next) {
+    try {
+      const { startDate, endDate } = req.query;
+      if (!startDate || !endDate) {
+        return res.status(400).json({ 
+          success: false, 
+          error: 'startDate and endDate are required' 
+        });
+      }
+      const report = await analyticsService.getAppointmentsReport(startDate, endDate);
+      return res.json({ success: true, data: report });
+    } catch (error) {
+      console.error('Appointments report error:', error);
+      next(error);
+    }
+  }
+
+  async getPatientsReport(req, res, next) {
+    try {
+      const { startDate, endDate } = req.query;
+      if (!startDate || !endDate) {
+        return res.status(400).json({ 
+          success: false, 
+          error: 'startDate and endDate are required' 
+        });
+      }
+      const report = await analyticsService.getPatientsReport(startDate, endDate);
+      return res.json({ success: true, data: report });
+    } catch (error) {
+      console.error('Patients report error:', error);
+      next(error);
+    }
+  }
+
+  async getDoctorsReport(req, res, next) {
+    try {
+      const { startDate, endDate } = req.query;
+      if (!startDate || !endDate) {
+        return res.status(400).json({ 
+          success: false, 
+          error: 'startDate and endDate are required' 
+        });
+      }
+      const report = await analyticsService.getDoctorsReport(startDate, endDate);
+      return res.json({ success: true, data: report });
+    } catch (error) {
+      console.error('Doctors report error:', error);
+      next(error);
+    }
+  }
+
+  async getRevenueReport(req, res, next) {
+    try {
+      const { startDate, endDate } = req.query;
+      if (!startDate || !endDate) {
+        return res.status(400).json({ 
+          success: false, 
+          error: 'startDate and endDate are required' 
+        });
+      }
+      const report = await analyticsService.getRevenueReport(startDate, endDate);
+      return res.json({ success: true, data: report });
+    } catch (error) {
+      console.error('Revenue report error:', error);
+      next(error);
+    }
+  }
+
+  async getSpecialtyReport(req, res, next) {
+    try {
+      const { startDate, endDate } = req.query;
+      if (!startDate || !endDate) {
+        return res.status(400).json({ 
+          success: false, 
+          error: 'startDate and endDate are required' 
+        });
+      }
+      const report = await analyticsService.getSpecialtyReport(startDate, endDate);
+      return res.json({ success: true, data: report });
+    } catch (error) {
+      console.error('Specialty report error:', error);
+      next(error);
+    }
+  }
 
 }
 

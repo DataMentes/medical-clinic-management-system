@@ -129,21 +129,22 @@ class AdminService {
           },
           _count: { select: { appointments: true } }
         },
-        orderBy: { person: { user: { registerDate: 'desc' } } }
+        orderBy: { id: 'desc' } // Changed from registerDate to avoid null sorting issues
       })
     ]);
 
-    // Format response
+    // ✅ FIX: Format response with null safety for patients without user accounts
     const formatted = patients.map(p => ({
       id: p.id,
       userId: p.userId,
       fullName: p.person.fullName,
-      email: p.person.user.email,
+      email: p.person.user?.email || null, // ✅ Safe access with optional chaining
       phoneNumber: p.person.phoneNumber,
       gender: p.person.gender,
       yearOfBirth: p.yearOfBirth,
-      active: p.person.user.active,
-      registerDate: p.person.user.registerDate,
+      active: p.person.user?.active || null, // ✅ Safe access
+      registerDate: p.person.user?.registerDate || null, // ✅ Safe access
+      hasUserAccount: p.person.user !== null, // ✅ NEW: Indicates if user account exists
       appointmentsCount: p._count.appointments
     }));
 
@@ -162,7 +163,6 @@ class AdminService {
             appointmentDate: true,
             appointmentType: true,
             status: true,
-            feePaid: true,
             doctor: {
               select: {
                 person: { select: { fullName: true } },
@@ -182,12 +182,17 @@ class AdminService {
     });
     if (!patient) throw new NotFoundError('Patient');
 
+    // ✅ FIX: Safe access to user data with optional chaining
     return {
       id: patient.id, userId: patient.userId,
-      fullName: patient.person.fullName, email: patient.person.user.email,
-      phoneNumber: patient.person.phoneNumber, gender: patient.person.gender,
-      yearOfBirth: patient.yearOfBirth, active: patient.person.user.active,
-      registerDate: patient.person.user.registerDate,
+      fullName: patient.person.fullName, 
+      email: patient.person.user?.email || null, // ✅ Safe access
+      phoneNumber: patient.person.phoneNumber, 
+      gender: patient.person.gender,
+      yearOfBirth: patient.yearOfBirth, 
+      active: patient.person.user?.active || null, // ✅ Safe access
+      registerDate: patient.person.user?.registerDate || null, // ✅ Safe access
+      hasUserAccount: patient.person.user !== null, // ✅ NEW
       appointments: patient.appointments
     };
   }
@@ -212,10 +217,14 @@ class AdminService {
           id: true,
           userId: true,
           specialtyId: true,
+          examinationFee: true,
+          consultationFee: true,
+          biography: true,
           person: {
             select: {
               fullName: true,
               phoneNumber: true,
+              gender: true,
               user: {
                 select: {
                   email: true,
@@ -238,7 +247,12 @@ class AdminService {
       fullName: d.person.fullName,
       email: d.person.user.email,
       phoneNumber: d.person.phoneNumber,
+      gender: d.person.gender,
       specialty: d.specialty.name,
+      specialtyId: d.specialtyId,
+      examinationFee: parseFloat(d.examinationFee),
+      consultationFee: parseFloat(d.consultationFee),
+      biography: d.biography,
       active: d.person.user.active,
       registerDate: d.person.user.registerDate,
       appointmentsCount: d._count.appointments
@@ -355,9 +369,9 @@ class AdminService {
 
     // ✅ OPTIMIZED: Use select
     const [total, users] = await Promise.all([
-      prisma.user.count({ where: { person: { roleId: 4, ...where.person } } }),
+      prisma.user.count({ where: { person: { roleId: ROLE_IDS.RECEPTIONIST, ...where.person } } }),
       prisma.user.findMany({
-        where: { person: { roleId: 4, ...where.person } },
+        where: { person: { roleId: ROLE_IDS.RECEPTIONIST, ...where.person } },
         skip, take,
         select: {
           userId: true,
@@ -377,7 +391,7 @@ class AdminService {
     ]);
 
     const formatted = users.map(u => ({
-      userId: u.userId,
+      id: u.userId, // Frontend expects 'id'
       fullName: u.person.fullName,
       email: u.email,
       phoneNumber: u.person.phoneNumber,
@@ -391,7 +405,11 @@ class AdminService {
 
   // CREATE / DELETE / TOGGLE HELPERS
   async createUserEntity({ email, password, fullName, phoneNumber, gender, roleId, specificData, roleTable, roleDataMapper }) {
+    // Check if email already exists
+    const existingUser = await prisma.user.findUnique({ where: { email } });
     if (existingUser) throw new ConflictError('Email already registered');
+    
+    // Check if phone number already exists
     const existingPhone = await prisma.person.findUnique({ where: { phoneNumber } });
     if (existingPhone) throw new ConflictError('Phone number already registered');
 
@@ -419,26 +437,30 @@ class AdminService {
 
   async createDoctor(data) {
     return this.createUserEntity({
-      ...data, roleId: 1, roleTable: 'doctor',
+      ...data, 
+      roleId: ROLE_IDS.DOCTOR, 
+      roleTable: 'doctor',
+      specificData: data, // Pass data as specificData for roleDataMapper
       roleDataMapper: (userId, d) => ({
-        userId, specialtyId: parseInt(d.specialtyId),
-        consultationFee: parseFloat(d.consultationFee), examinationFee: parseFloat(d.examinationFee),
+        userId, 
+        specialtyId: parseInt(d.specialtyId),
+        consultationFee: parseFloat(d.consultationFee), 
+        examinationFee: parseFloat(d.examinationFee),
         biography: d.biography
       })
     });
   }
 
   async createPatient(data) {
-    // roleId 2 based on Auth logic
     return this.createUserEntity({
-      ...data, roleId: 2, roleTable: 'patient', specificData: data,
+      ...data, roleId: ROLE_IDS.PATIENT, roleTable: 'patient', specificData: data,
       roleDataMapper: (userId, d) => ({ userId, yearOfBirth: parseInt(d.yearOfBirth) })
     });
   }
 
   async createReceptionist(data) {
     return this.createUserEntity({
-      ...data, roleId: 4, roleTable: null, roleDataMapper: null
+      ...data, roleId: ROLE_IDS.RECEPTIONIST, roleTable: null, roleDataMapper: null
     });
   }
 
@@ -450,10 +472,16 @@ class AdminService {
       });
       if (!user) throw new NotFoundError('User');
 
-      // Explicit Deletion Order to confirm logic although Cascade might exist
-      if (user.person?.doctor) await tx.doctor.delete({ where: { id: user.person.doctor.id } });
-      if (user.person?.patient) await tx.patient.delete({ where: { id: user.person.patient.id } });
-      if (user.person) await tx.person.delete({ where: { userId } });
+      // Deletion Order: child entities first, then parent
+      // 1. Delete doctor/patient (if they exist)
+      if (user.person?.doctor) {
+        await tx.doctor.delete({ where: { id: user.person.doctor.id } });
+      }
+      if (user.person?.patient) {
+        await tx.patient.delete({ where: { id: user.person.patient.id } });
+      }
+      
+      // 2. Delete user (onDelete: Cascade will auto-delete person)
       await tx.user.delete({ where: { userId } });
       
       return { success: true };
@@ -480,10 +508,17 @@ class AdminService {
   // ==================== MISSING METHODS RESTORATION ====================
 
   async updatePatient(id, data) {
-    const patient = await prisma.patient.findUnique({ where: { id } });
+    const patient = await prisma.patient.findUnique({ 
+      where: { id },
+      include: { person: { include: { user: true } } } // Check if user exists
+    });
     if (!patient) throw new NotFoundError('Patient');
 
-    await prisma.$transaction([
+    // Build transaction updates array
+    const updates = [];
+
+    // Always update person data
+    updates.push(
       prisma.person.update({
         where: { userId: patient.userId },
         data: {
@@ -491,16 +526,41 @@ class AdminService {
           phoneNumber: data.phoneNumber,
           gender: data.gender
         }
-      }),
+      })
+    );
+
+    // Always update patient data
+    updates.push(
       prisma.patient.update({
         where: { id },
         data: {
           yearOfBirth: parseInt(data.yearOfBirth)
         }
-      }),
-      ...(data.active ? [prisma.user.update({ where: { userId: patient.userId }, data: { active: data.active } })] : []),
-      ...(data.password ? [prisma.user.update({ where: { userId: patient.userId }, data: { passwordHash: await bcrypt.hash(data.password, 10) } })] : [])
-    ]);
+      })
+    );
+
+    // ✅ FIX: Only update user fields if user account exists
+    if (patient.person.user) {
+      if (data.active) {
+        updates.push(
+          prisma.user.update({ 
+            where: { userId: patient.userId }, 
+            data: { active: data.active } 
+          })
+        );
+      }
+      
+      if (data.password) {
+        updates.push(
+          prisma.user.update({ 
+            where: { userId: patient.userId }, 
+            data: { passwordHash: await bcrypt.hash(data.password, 10) } 
+          })
+        );
+      }
+    }
+
+    await prisma.$transaction(updates);
     return { success: true };
   }
 
@@ -511,7 +571,7 @@ class AdminService {
       where: { userId: id },
       include: { person: true }
     });
-    if (!user || user.person.roleId !== 4) throw new NotFoundError('Receptionist');
+    if (!user || user.person.roleId !== ROLE_IDS.RECEPTIONIST) throw new NotFoundError('Receptionist');
     
     return {
       id: user.userId, fullName: user.person.fullName, email: user.email,
@@ -520,18 +580,52 @@ class AdminService {
   }
 
   async updateReceptionist(id, data) {
-    // id is userId
-    const user = await prisma.user.findUnique({ where: { userId: id } });
-    if (!user || user.person.roleId !== 4) throw new NotFoundError('Receptionist');
+    // id is userId - ensure it's a valid integer
+    const userId = parseInt(id);
+    if (isNaN(userId)) {
+      throw new ValidationError('Invalid receptionist ID');
+    }
+    
+    const user = await prisma.user.findUnique({ 
+      where: { userId },
+      include: { person: true }
+    });
+    if (!user || user.person.roleId !== ROLE_IDS.RECEPTIONIST) throw new NotFoundError('Receptionist');
 
-    await prisma.$transaction([
-      prisma.person.update({
-        where: { userId: id },
-        data: { fullName: data.fullName, phoneNumber: data.phoneNumber }
-      }),
-      ...(data.active ? [prisma.user.update({ where: { userId: id }, data: { active: data.active } })] : []),
-      ...(data.password ? [prisma.user.update({ where: { userId: id }, data: { passwordHash: await bcrypt.hash(data.password, 10) } })] : [])
-    ]);
+    // Build transaction array
+    const updates = [];
+    
+    // Update person data
+    if (data.fullName || data.phoneNumber || data.gender) {
+      updates.push(
+        prisma.person.update({
+          where: { userId },
+          data: {
+            ...(data.fullName && { fullName: data.fullName }),
+            ...(data.phoneNumber && { phoneNumber: data.phoneNumber }),
+            ...(data.gender && { gender: data.gender })
+          }
+        })
+      );
+    }
+    
+    // Update user data
+    const userUpdate = {};
+    if (data.active) userUpdate.active = data.active;
+    if (data.password) userUpdate.passwordHash = await bcrypt.hash(data.password, BCRYPT_SALT_ROUNDS);
+    
+    if (Object.keys(userUpdate).length > 0) {
+      updates.push(
+        prisma.user.update({
+          where: { userId },
+          data: userUpdate
+        })
+      );
+    }
+
+    if (updates.length > 0) {
+      await prisma.$transaction(updates);
+    }
 
     return { success: true };
   }
@@ -539,27 +633,68 @@ class AdminService {
   // ADMINS
   async getAllAdmins({ skip, take, search }) {
     const userWhere = {
-      person: { roleId: 3, ...(search ? { OR: [{ fullName: { contains: search, mode: 'insensitive' } }, { phoneNumber: { contains: search } }] } : {}) },
+      person: { roleId: ROLE_IDS.ADMIN, ...(search ? { OR: [{ fullName: { contains: search, mode: 'insensitive' } }, { phoneNumber: { contains: search } }] } : {}) },
       ...(search ? { email: { contains: search, mode: 'insensitive' } } : {})
     };
     const [total, users] = await Promise.all([
       prisma.user.count({ where: userWhere }),
-      prisma.user.findMany({ where: userWhere, skip, take, include: { person: true }, orderBy: { registerDate: 'desc' } })
+      prisma.user.findMany({ where: userWhere, skip, take, include: { person: { select: { fullName: true, phoneNumber: true, gender: true } } }, orderBy: { registerDate: 'desc' } })
     ]);
     const formatted = users.map(u => ({
       id: u.userId, fullName: u.person.fullName, email: u.email,
-      phoneNumber: u.person.phoneNumber, active: u.active, registerDate: u.registerDate
+      phoneNumber: u.person.phoneNumber, gender: u.person.gender,
+      active: u.active, registerDate: u.registerDate
     }));
     return { total, admins: formatted };
   }
 
   async createAdmin(data) {
-    return this.createUserEntity({ ...data, roleId: 3, roleTable: null, roleDataMapper: null });
+    return this.createUserEntity({ ...data, roleId: ROLE_IDS.ADMIN, roleTable: null, roleDataMapper: null });
   }
 
   async updateAdmin(id, data) {
-    // Reuse Receptionist update logic as it's just User+Person update
-    return this.updateReceptionist(id, data);
+    // id is userId
+    const user = await prisma.user.findUnique({ 
+      where: { userId: id },
+      include: { person: true }
+    });
+    if (!user || user.person.roleId !== ROLE_IDS.ADMIN) throw new NotFoundError('Admin');
+
+    const updates = [];
+    
+    // Update person data
+    if (data.fullName || data.phoneNumber || data.gender) {
+      updates.push(
+        prisma.person.update({
+          where: { userId: id },
+          data: {
+            ...(data.fullName && { fullName: data.fullName }),
+            ...(data.phoneNumber && { phoneNumber: data.phoneNumber }),
+            ...(data.gender && { gender: data.gender })
+          }
+        })
+      );
+    }
+    
+    // Update user data
+    const userUpdate = {};
+    if (data.active) userUpdate.active = data.active;
+    if (data.password) userUpdate.passwordHash = await bcrypt.hash(data.password, BCRYPT_SALT_ROUNDS);
+    
+    if (Object.keys(userUpdate).length > 0) {
+      updates.push(
+        prisma.user.update({
+          where: { userId: id },
+          data: userUpdate
+        })
+      );
+    }
+
+    if (updates.length > 0) {
+      await prisma.$transaction(updates);
+    }
+
+    return { success: true };
   }
 
   async deleteAdmin(id) {
@@ -600,9 +735,9 @@ class AdminService {
       throw new ValidationError(`Invalid weekDay. Must be one of: ${WEEK_DAYS.join(', ')}`);
     }
     
-    // Validate times
-    const start = new Date(`1970-01-01T${data.startTime}`);
-    const end = new Date(`1970-01-01T${data.endTime}`);
+    // Validate times - use UTC with Z suffix to avoid timezone issues
+    const start = new Date(`1970-01-01T${data.startTime}Z`);
+    const end = new Date(`1970-01-01T${data.endTime}Z`);
     if (start >= end) {
       throw new ValidationError('startTime must be before endTime');
     }
@@ -620,13 +755,17 @@ class AdminService {
     }); // Unique constraint usually handles this but good to check
     if (conflict) throw new ConflictError('Doctor already has a schedule for this day');
 
+    // Convert time strings to Date objects for Prisma - use UTC with Z suffix
+    const startTime = new Date(`1970-01-01T${data.startTime}Z`);
+    const endTime = new Date(`1970-01-01T${data.endTime}Z`);
+
     return prisma.doctorSchedule.create({
       data: {
         doctorId: parseInt(data.doctorId),
         roomId: parseInt(data.roomId),
         weekDay: data.weekDay,
-        startTime: data.startTime,
-        endTime: data.endTime,
+        startTime: startTime,
+        endTime: endTime,
         maxCapacity: parseInt(data.maxCapacity)
       }
     });
@@ -636,16 +775,25 @@ class AdminService {
     const schedule = await prisma.doctorSchedule.findUnique({ where: { id } });
     if (!schedule) throw new NotFoundError('Schedule');
 
+    // Convert time strings to Date objects for Prisma
+    const updateData = {
+      doctorId: data.doctorId ? parseInt(data.doctorId) : undefined,
+      roomId: data.roomId ? parseInt(data.roomId) : undefined,
+      weekDay: data.weekDay,
+      maxCapacity: data.maxCapacity ? parseInt(data.maxCapacity) : undefined
+    };
+
+    // Only add time fields if provided, and convert to Date objects - use UTC with Z suffix
+    if (data.startTime) {
+      updateData.startTime = new Date(`1970-01-01T${data.startTime}Z`);
+    }
+    if (data.endTime) {
+      updateData.endTime = new Date(`1970-01-01T${data.endTime}Z`);
+    }
+
     return prisma.doctorSchedule.update({
       where: { id },
-      data: {
-        doctorId: parseInt(data.doctorId),
-        roomId: parseInt(data.roomId),
-        weekDay: data.weekDay,
-        startTime: data.startTime ? new Date(`1970-01-01T${data.startTime}`) : undefined,
-        endTime: data.endTime ? new Date(`1970-01-01T${data.endTime}`) : undefined,
-        maxCapacity: parseInt(data.maxCapacity)
-      }
+      data: updateData
     });
   }
 
@@ -661,14 +809,54 @@ class AdminService {
       prisma.appointment.findMany({
         skip, take,
         include: {
-          patient: { include: { person: { select: { fullName: true } } } },
-          doctor: { include: { person: { select: { fullName: true } } } },
-          schedule: { include: { room: true } }
+          patient: { include: { person: { select: { fullName: true, phoneNumber: true } } } },
+          doctor: { 
+            include: { 
+              person: { select: { fullName: true } },
+              specialty: { select: { name: true } }
+            } 
+          },
+          schedule: { 
+            select: {
+              id: true,
+              weekDay: true,
+              startTime: true,
+              endTime: true,
+              room: {
+                select: {
+                  roomName: true
+                }
+              }
+            }
+          }
         },
         orderBy: { appointmentDate: 'desc' }
       })
     ]);
-    return { total, appointments };
+
+    // ✅ Transform to flat, frontend-friendly structure
+    const formatted = appointments.map(appt => {
+      // Convert time objects to strings
+      const startTime = appt.schedule.startTime ? String(appt.schedule.startTime).slice(0, 5) : '00:00';
+      const endTime = appt.schedule.endTime ? String(appt.schedule.endTime).slice(0, 5) : '00:00';
+      
+      return {
+        id: appt.id,
+        patientId: appt.patientId,
+        patientName: appt.patient.person.fullName,
+        patientPhone: appt.patient.person.phoneNumber || 'N/A',
+        doctorId: appt.doctorId,
+        doctorName: appt.doctor.person.fullName,
+        specialty: appt.doctor.specialty?.name || 'N/A',
+        appointmentType: appt.appointmentType,
+        appointmentDate: appt.appointmentDate,
+        status: appt.status,
+        scheduleInfo: `${appt.schedule.weekDay} ${startTime}-${endTime}`,
+        roomName: appt.schedule.room?.roomName || 'N/A'
+      };
+    });
+
+    return { total, appointments: formatted };
   }
 
   async getAppointmentById(id) {
@@ -686,27 +874,101 @@ class AdminService {
   }
 
   async createAppointment(data) {
-    // Logic usually complex (check availability etc), but for Admin create we might force it?
-    // Minimal implementation for now
-    return prisma.appointment.create({
+    // Create appointment with all related data
+    const appointment = await prisma.appointment.create({
       data: {
         patientId: parseInt(data.patientId),
         doctorId: parseInt(data.doctorId),
         scheduleId: parseInt(data.scheduleId),
         appointmentDate: new Date(data.appointmentDate),
         appointmentType: data.appointmentType,
-        status: data.status || 'Pending',
-        feePaid: parseFloat(data.feePaid || 0)
+        status: data.status || 'Pending'
+      },
+      include: {
+        patient: {
+          include: {
+            person: {
+              include: {
+                user: true
+              }
+            }
+          }
+        },
+        doctor: {
+          include: {
+            person: true
+          }
+        },
+        schedule: {
+          include: {
+            room: true
+          }
+        }
       }
     });
+
+    // Send email notification if patient has email
+    const patientEmail = appointment.patient.person.user?.email;
+    
+    console.log('📧 Email check:', {
+      hasPatient: !!appointment.patient,
+      hasPerson: !!appointment.patient?.person,
+      hasUser: !!appointment.patient?.person?.user,
+      email: patientEmail
+    });
+    
+    if (patientEmail && patientEmail.trim() !== '') {
+      try {
+        const emailService = require('../email.service');
+        
+        // Format time from schedule
+        const formatTime = (timeValue) => {
+          if (timeValue instanceof Date) {
+            return timeValue.toISOString().substring(11, 16);
+          }
+          if (typeof timeValue === 'string' && timeValue.includes('T')) {
+            return timeValue.split('T')[1].substring(0, 5);
+          }
+          return String(timeValue).substring(0, 5);
+        };
+
+        const emailData = {
+          patientEmail: patientEmail,
+          patientName: appointment.patient.person.fullName,
+          doctorName: appointment.doctor.person.fullName,
+          date: new Date(data.appointmentDate).toLocaleDateString('en-US', { 
+            weekday: 'long', 
+            year: 'numeric', 
+            month: 'long', 
+            day: 'numeric' 
+          }),
+          time: `${formatTime(appointment.schedule.startTime)} - ${formatTime(appointment.schedule.endTime)}`,
+          room: appointment.schedule.room.roomName,
+          appointmentType: data.appointmentType
+        };
+        
+        console.log('📧 Sending email with data:', emailData);
+        
+        await emailService.sendAppointmentConfirmation(emailData);
+        console.log('✅ Appointment confirmation email sent to:', patientEmail);
+      } catch (emailError) {
+        console.error('❌ Failed to send email:', emailError.message);
+        // Don't fail the appointment if email fails
+      }
+    } else {
+      console.log('⚠️ Patient has no email address, skipping email notification');
+    }
+
+    return appointment;
   }
 
   async updateAppointment(id, data) {
+    const appointment = await prisma.appointment.findUnique({ where: { id } });
+    if (!appointment) throw new NotFoundError('Appointment');
     return prisma.appointment.update({
       where: { id },
       data: {
         status: data.status,
-        feePaid: data.feePaid ? parseFloat(data.feePaid) : undefined,
         appointmentDate: data.appointmentDate ? new Date(data.appointmentDate) : undefined
       }
     });

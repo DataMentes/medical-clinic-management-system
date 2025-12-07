@@ -85,16 +85,47 @@ class EmailService {
         to: appointment.patientEmail,
         subject: 'Appointment Confirmation',
         html: `
-          <h2>Appointment Confirmed</h2>
-          <p>Dear ${appointment.patientName},</p>
-          <p>Your appointment has been confirmed:</p>
-          <ul>
-            <li><strong>Doctor:</strong> ${appointment.doctorName}</li>
-            <li><strong>Date:</strong> ${appointment.date}</li>
-            <li><strong>Time:</strong> ${appointment.time}</li>
-          </ul>
-          <p>Please arrive 10 minutes early.</p>
-          <p>Best regards,<br>${CLINIC_NAME} Team</p>
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px;">
+            <h2 style="color: #2c5aa0;">Appointment Confirmed ✓</h2>
+            <p>Dear <strong>${appointment.patientName}</strong>,</p>
+            <p>Your appointment has been successfully confirmed with the following details:</p>
+            
+            <div style="background: #f8f9fa; padding: 20px; border-radius: 5px; margin: 20px 0;">
+              <table style="width: 100%; border-collapse: collapse;">
+                <tr>
+                  <td style="padding: 8px 0;"><strong>👨‍⚕️ Doctor:</strong></td>
+                  <td style="padding: 8px 0;">${appointment.doctorName}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 8px 0;"><strong>📅 Date:</strong></td>
+                  <td style="padding: 8px 0;">${appointment.date}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 8px 0;"><strong>🕐 Time:</strong></td>
+                  <td style="padding: 8px 0;">${appointment.time}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 8px 0;"><strong>🏥 Room:</strong></td>
+                  <td style="padding: 8px 0;">${appointment.room}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 8px 0;"><strong>📋 Type:</strong></td>
+                  <td style="padding: 8px 0;">${appointment.appointmentType}</td>
+                </tr>
+              </table>
+            </div>
+            
+            <div style="background: #fff3cd; padding: 15px; border-left: 4px solid #ffc107; margin: 20px 0;">
+              <strong>⏰ Important Reminder:</strong>
+              <p style="margin: 5px 0 0 0;">Please arrive <strong>10 minutes early</strong> for check-in.</p>
+            </div>
+            
+            <p style="color: #666; font-size: 14px; margin-top: 30px;">
+              If you need to cancel or reschedule, please contact us as soon as possible.
+            </p>
+            
+            <p>Best regards,<br><strong>${CLINIC_NAME} Team</strong></p>
+          </div>
         `
       };
 
